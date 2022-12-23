@@ -756,16 +756,58 @@ void editorMoveCursor(int key) {
 	}
 }
 
+void editorReplaceChar(int y,int x,int new)
+{
+	if (E.row[y].size)
+		E.row[y].chars[x] = new;
+	E.dirty++;
+	editorUpdateRow(E.row + y);
+	return;
+}
+
+static inline void deleteRange(int y,int x,int length)
+{
+	for (int i = 0;i < length;i++)
+		editorRowDelChar(E.row + y,x);
+	return;
+}
+
 static inline void processKeyNormal(int key)
 {
-	static char lastChar = '\0';
+	static int lastChar = '\0';
 	int y = E.cy + E.rowoff,x = E.cx + E.coloff;
 	if (lastChar == 'r') {
-		if (E.row[y].size)
-			E.row[y].chars[x] = key;
-		lastChar = '\0';
+		editorReplaceChar(y,x,key);
+		lastChar = 0;
+		return;
+	} else if (lastChar == 'd') {
+		if (key == 'd') {
+			editorDelRow(y);
+		} else if (key == '$') {
+			deleteRange(y,x,E.row[y].size - x);
+		} else if (key == '0') {
+			deleteRange(y,0,x);
+			E.cx = 0;
+		}
+		lastChar = 0;
+		return;
 	}
 	switch (key) {
+		case 'd':
+			lastChar = 'd';
+			break;
+		case '$':
+		case END_KEY:
+			E.cx	= E.row[y].size <= E.screencols ?
+				  E.row[y].size : E.screencols;
+			E.coloff= E.row[y].size <= E.screencols ?
+				  0 : E.row[y].size - E.cx;
+			break;
+		case '0':
+		case HOME_KEY:
+			E.cx	= 0;
+			E.coloff= 0;
+			break;
 		case 'i':
 			E.mode = MODE_INSERT;
 			break;
@@ -774,6 +816,7 @@ static inline void processKeyNormal(int key)
 			break;
 		case 'h':
 		case ARROW_LEFT:
+		case BACKSPACE:
 			editorMoveCursor(ARROW_LEFT);
 			break;
 		case 'l':
@@ -782,6 +825,7 @@ static inline void processKeyNormal(int key)
 			break;
 		case 'j':
 		case ARROW_DOWN:
+		case ENTER:
 			editorMoveCursor(ARROW_DOWN);
 			break;
 		case 'k':
@@ -813,11 +857,13 @@ static inline void processKeyNormal(int key)
 			if (E.row[y].size)
 				editorRowDelChar(E.row + y,x);
 			break;
+		case 'r':
+			lastChar = 'r';
+			break;
 		default:
 			lastChar = '\0';
 			break;
 	}
-	lastChar = key;
 	return;
 }
 
