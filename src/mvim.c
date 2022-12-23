@@ -711,9 +711,8 @@ void editorMoveCursor(int key) {
 	switch(key) {
 		case ARROW_LEFT:
 			if (E.cx == 0) {
-				if (E.coloff) {
+				if (E.coloff)
 					E.coloff--;
-				}
 			} else {
 				E.cx--;
 			}
@@ -728,9 +727,8 @@ void editorMoveCursor(int key) {
 			}
 			break;
 		case ARROW_UP:
-			if (E.cy) {
+			if (E.cy)
 				E.cy--;
-			}
 			break;
 		case ARROW_DOWN:
 			if (filerow < E.numrows) {
@@ -808,6 +806,15 @@ static inline void processKeyNormal(int key)
 			E.cx	= 0;
 			E.coloff= 0;
 			break;
+		case 'o':
+			editorInsertRow(y + 1,"",0);
+			editorMoveCursor(ARROW_DOWN);
+			E.mode = MODE_INSERT;
+			break;
+		case 'a':
+			editorMoveCursor(ARROW_RIGHT);
+			E.mode = MODE_INSERT;
+			break;
 		case 'i':
 			E.mode = MODE_INSERT;
 			break;
@@ -873,7 +880,26 @@ static inline void processKeyInsert(int key)
 		case ESC:
 			E.mode = MODE_NORMAL;
 			break;
+		case ENTER:
+			editorInsertNewline();
+			break;
+		case BACKSPACE:
+			editorDelChar();
+			break;
+		case ARROW_LEFT:
+			editorMoveCursor(ARROW_LEFT);
+			break;
+		case ARROW_RIGHT:
+			editorMoveCursor(ARROW_RIGHT);
+			break;
+		case ARROW_UP:
+			editorMoveCursor(ARROW_UP);
+			break;
+		case ARROW_DOWN:
+			editorMoveCursor(ARROW_DOWN);
+			break;
 		default:
+			editorInsertChar(key);
 			break;
 	}
 	return;
