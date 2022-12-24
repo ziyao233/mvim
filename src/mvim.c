@@ -112,11 +112,11 @@ void editorSetStatusMessage(const char *fmt, ...);
 static struct termios orig_termios; /* In order to restore at exit.*/
 
 void disableRawMode(int fd) {
-    /* Don't even check the return value as it's too late. */
-    if (E.rawmode) {
-        tcsetattr(fd,TCSAFLUSH,&orig_termios);
-        E.rawmode = 0;
-    }
+	/* Don't even check the return value as it's too late. */
+	if (E.rawmode) {
+		tcsetattr(fd,TCSAFLUSH,&orig_termios);
+		E.rawmode = 0;
+	}
 }
 
 /* Called at exit to avoid remaining in raw mode. */
@@ -662,7 +662,7 @@ void editorRefreshScreen(void)
 			   E.mode == MODE_VISUAL ? "-- VISUAL --" :"");
 	int rlen = snprintf(rstatus,sizeof(rstatus),"%d,%d    %d%%",
 			    E.rowoff + E.cy + 1,E.coloff + E.cx + 1,
-			    (E.rowoff + E.cy) * 100 / E.numrows);
+			    E.numrows ? E.rowoff * 100 / E.numrows : 100);
 	if (len > E.screencols)
 		len = E.screencols;
 
@@ -763,6 +763,62 @@ void editorReplaceChar(int y,int x,int new)
 	return;
 }
 
+static inline void commandModeError(int fd,const char *s)
+{
+	enableRawMode(fd);
+	write(STDOUT_FILENO,s,strlen(s));
+	editorReadKey(fd);
+	return;
+}
+
+static inline void commandMode(int fd)
+{
+	disableRawMode(fd);
+
+	char tmp[80];
+	snprintf(tmp,sizeof(tmp),"\x1b[%d;%dH:",E.screenrows,0);
+	write(STDOUT_FILENO,tmp,strlen(tmp));
+
+	char *cmd = NULL;
+	size_t size = 0;
+	ssize_t length = getline(&cmd,&size,stdin);
+	if (length < 0)
+		goto end;
+	cmd[length - 1] = '\0';
+
+	if (!strcmp(cmd,"q")) {
+		if (E.dirty) {
+			commandModeError(fd,"No write since last change");
+		} else {
+			exit(0);
+		}
+	} else if (!strcmp(cmd,"q!")) {
+		exit(0);
+	} else if (!strcmp(cmd,"w")) {
+		if (E.dirty) {
+			if (editorSave())
+				commandModeError(fd,"Cannot save file");
+		}
+	} else if (!strcmp(cmd,"wq")) {
+		if (E.dirty) {
+			if (editorSave()) {
+				commandModeError(fd,"Cannot save file");
+				goto end;
+			}
+		}
+		exit(0);
+	} else {
+		puts(cmd);
+		commandModeError(fd,"Unknown command");
+	}
+
+end:
+	free(cmd);
+
+	enableRawMode(fd);
+	return;
+}
+
 static inline void deleteRange(int y,int x,int length)
 {
 	for (int i = 0;i < length;i++)
@@ -770,29 +826,20 @@ static inline void deleteRange(int y,int x,int length)
 	return;
 }
 
-static inline void processKeyNormal(int key)
+static inline void processKeyNormal(int fd,int key)
 {
-	static int lastChar = '\0';
 	int y = E.cy + E.rowoff,x = E.cx + E.coloff;
-	if (lastChar == 'r') {
-		editorReplaceChar(y,x,key);
-		lastChar = 0;
-		return;
-	} else if (lastChar == 'd') {
-		if (key == 'd') {
-			editorDelRow(y);
-		} else if (key == '$') {
-			deleteRange(y,x,E.row[y].size - x);
-		} else if (key == '0') {
-			deleteRange(y,0,x);
-			E.cx = 0;
-		}
-		lastChar = 0;
-		return;
-	}
 	switch (key) {
 		case 'd':
-			lastChar = 'd';
+			key = editorReadKey(fd);
+			if (key == 'd') {
+				editorDelRow(y);
+			} else if (key == '$') {
+				deleteRange(y,x,E.row[y].size - x);
+			} else if (key == '0') {
+				deleteRange(y,0,x);
+				E.cx = 0;
+			}
 			break;
 		case '$':
 		case END_KEY:
@@ -840,10 +887,8 @@ static inline void processKeyNormal(int key)
 			editorMoveCursor(ARROW_UP);
 			break;
 		case 'g':
-			if (lastChar != 'g') {
-				lastChar = 'g';
-			} else {
-				lastChar = '\0';
+			key = editorReadKey(fd);
+			if (key == 'g') {
 				E.rowoff = 0;
 				E.coloff = 0;
 				E.cx	 = 0;
@@ -865,10 +910,13 @@ static inline void processKeyNormal(int key)
 				editorRowDelChar(E.row + y,x);
 			break;
 		case 'r':
-			lastChar = 'r';
+			key = editorReadKey(fd);
+			editorReplaceChar(y,x,key);
+			break;
+		case ':':
+			commandMode(fd);
 			break;
 		default:
-			lastChar = '\0';
 			break;
 	}
 	return;
@@ -923,7 +971,7 @@ void editorProcessKeypress(int fd) {
 	int key = editorReadKey(fd);
 	switch (E.mode) {
 		case MODE_NORMAL:
-			processKeyNormal(key);
+			processKeyNormal(fd,key);
 			break;
 		case MODE_INSERT:
 			processKeyInsert(key);
