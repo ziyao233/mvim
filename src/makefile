@@ -19,7 +19,7 @@ FILE_OBJS	:= mvim.o
 FILE_OUTPUT	:= mvim
 
 # Flags
-FLAG_CC		:= -O0 -Wextra -Werror -Wall -g
+FLAG_CC		:= -O0 -Wextra -Werror -Wall -g -pedantic
 FLAG_LD		:=
 
 default: build
