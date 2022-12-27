@@ -47,6 +47,8 @@
 #include<wchar.h>
 #include<locale.h>
 #include<limits.h>
+#include<wctype.h>
+#include<stdbool.h>
 
 #include<termios.h>
 #include<sys/types.h>
@@ -68,10 +70,10 @@ typedef struct erow {
 static struct editorConfig {
 	int cx,cy;		// Cursor x and y position on screen
 	int rowoff;		// Offset of row displayed.
-	int coloff;		// Offset of column displayed.
 	int screenrows;		// Number of rows that we can show
 	int screencols;		// Number of cols that we can show
 	int numrows;		// Number of rows
+	int rowBottom;		// Index of the row in the bottom
 	int rawmode;		// Is terminal raw mode enabled?
 	erow *row;		// Rows
 	int dirty;		// File modified but not saved.
@@ -79,6 +81,7 @@ static struct editorConfig {
 	enum {
 		MODE_NORMAL,MODE_INSERT,MODE_VISUAL
 	} mode;
+	bool isScreenFull;	// The screen is fully used (no '~')
 } E;
 
 static struct editorConfig E;
@@ -488,7 +491,6 @@ void editorRowDelChar(erow *row, int at)
 void editorInsertChar(int c)
 {
 	int filerow = E.rowoff + E.cy;
-	int filecol = E.coloff + E.cx;
 	erow *row = (filerow >= E.numrows) ? NULL : &E.row[filerow];
 
     /* If the row where the cursor is currently located does not exist in our
@@ -498,12 +500,8 @@ void editorInsertChar(int c)
 			editorInsertRow(E.numrows,L"",0);
 	}
 	row = &E.row[filerow];
-	editorRowInsertChar(row,filecol,c);
-	if (E.cx == E.screencols - 1) {
-		E.coloff++;
-	} else {
-		E.cx++;
-	}
+	editorRowInsertChar(row,E.cx,c);
+	E.cx++;
 	E.dirty++;
 }
 
@@ -512,7 +510,6 @@ void editorInsertChar(int c)
 void editorInsertNewline(void)
 {
 	int filerow = E.rowoff + E.cy;
-	int filecol = E.coloff + E.cx;
 	erow *row = (filerow >= E.numrows) ? NULL : &E.row[filerow];
 
 	if (!row) {
@@ -526,29 +523,27 @@ void editorInsertNewline(void)
  * If the cursor is over the current line size, we want to conceptually
  * think it's just over the last character.
  */
-	if (filecol >= row->size)
-		filecol = row->size;
+	if (E.cx >= row->size)
+		E.cx = row->size;
 
-	if (filecol == 0) {
+	if (E.cx == 0) {
 		editorInsertRow(filerow,L"",0);
 	} else {
 	/* We are in the middle of a line. Split it between two rows. */
-		editorInsertRow(filerow + 1,row->chars + filecol,
-				row->size - filecol);
+		editorInsertRow(filerow + 1,row->chars + E.cx,row->size - E.cx);
 		row = &E.row[filerow];
-		row->chars[filecol] = L'\0';
-		row->size = filecol;
+		row->chars[E.cx] = L'\0';
+		row->size = E.cx;
 		editorUpdateRow(row);
 	}
 
 fixcursor:
-	if (E.cy == E.screenrows - 1) {
+	if (E.cy == E.rowBottom && E.isScreenFull) {
 		E.rowoff++;
 	} else {
 		E.cy++;
 	}
 	E.cx = 0;
-	E.coloff = 0;
 	return;
 }
 
@@ -556,16 +551,15 @@ fixcursor:
 void editorDelChar()
 {
 	int filerow = E.rowoff + E.cy;
-	int filecol = E.coloff + E.cx;
 	erow *row = (filerow >= E.numrows) ? NULL : &E.row[filerow];
 
-	if (!row || (filecol == 0 && filerow == 0))
+	if (!row || (E.cx == 0 && filerow == 0))
 		return;
 
-	if (filecol == 0) {
+	if (!E.cx) {
         /* Handle the case of column 0, we need to move the current line
          * on the right of the previous one. */
-		filecol += E.row[filerow - 1].size;
+		int newX = E.cx + E.row[filerow - 1].size;
 		editorRowAppendString(&E.row[filerow - 1],row->chars,row->size);
 		editorDelRow(filerow);
 		row = NULL;
@@ -574,19 +568,10 @@ void editorDelChar()
 		} else {
 			E.cy--;
 		}
-		E.cx = filecol;
-		if (E.cx >= E.screencols) {
-			int shift	= E.cx - E.screencols;
-			E.cx		-= shift;
-			E.coloff	+= shift;
-		}
+		E.cx = newX;
 	} else {
-		editorRowDelChar(row,filecol - 1);
-		if (E.cx == 0 && E.coloff) {
-			E.coloff--;
-		} else {
-			E.cx--;
-		}
+		editorRowDelChar(row,E.cx - 1);
+		E.cx--;
 	}
 
 	if (row)
@@ -660,28 +645,54 @@ writeerr:
 	return 1;
 }
 
+/*
+ *	|<---------------------------------->_
+ *		editorWidthFrom()	    Cursor
+ */
+int editorWidthFrom(int start)
+{
+	int width = 0;
+	erow *row = E.row + E.rowoff + E.cy;
+	for (int i = start;i - start < E.cx;i++) {
+		int t = wcwidth(row->chars[i]);
+		width += t >= 0			? t			:
+			 row->chars[i] == TAB	? 8 - width % 8		:
+						  1;
+	}
+	return width;
+}
+
 /* ============================= Terminal update ============================ */
 
-static inline void drawRowAt(int at,int start,int charNum)
+static inline int drawRowAt(int at,int remainSpace)
 {
 	erow *row = E.row + at;
-	for (int i = start,width = 0;
-	     i - start < charNum && width < E.screencols;
-	     i++) {
+	int line = 0;
+
+	for (int i = 0,width = 0;i < row->rsize;i++) {
 		int t = wcwidth(row->render[i]);
-		if (t < 0) {
-			putchar('?');
-			width++;
-		} else {
-			if (width + t < E.screencols) {
-				char s[MB_LEN_MAX];
-				s[wctomb(s,row->render[i])] = '\0';
-				writeString(s);
-				width += t;
-			}
+		t = t < 0 ? 1 : t;
+
+		/*	Wrapping	*/
+		if (width + t >= E.screencols) {
+			width = 0;
+			writeString("\0x1b[0K]\r\n");
+			line++;
+			if (line >= remainSpace)
+				break;
 		}
+
+		if (!iswprint(row->render[i])) {
+			putchar('?');
+		} else {
+			char s[MB_LEN_MAX];
+			s[wctomb(s,row->render[i])] = '\0';
+			writeString(s);
+		}
+		width += t;
 	}
-	return;
+
+	return line + 1;
 }
 
 /* This function writes the whole screen using VT100 escape characters
@@ -690,11 +701,15 @@ void editorRefreshScreen(void)
 {
 	writeString("\x1b[?25l");	// Hide cursor.
 	writeString("\x1b[H");		// Go home.
-	for (int y = 0; y < E.screenrows; y++) {
-		int filerow = E.rowoff + y;
+
+	int printedLine = 0,y = 0,cursorY = 0;
+	E.isScreenFull = true;
+	for (int i = 0;y < E.screenrows;y += printedLine,i++) {
+		int filerow = E.rowoff + i;
 
 		if (filerow >= E.numrows) {
-			if (E.numrows == 0 && y == E.screenrows / 3) {
+			E.isScreenFull = false;
+			if (!E.numrows && printedLine == E.screenrows / 2) {
 				char welcome[80];
 				int wellen = snprintf(welcome,sizeof(welcome),
 				"mVim\x1b[0K\r\n");
@@ -707,29 +722,33 @@ void editorRefreshScreen(void)
 					putchar(' ');
 
 				writeString(welcome);
+				E.isScreenFull = false;
 			} else {
 				writeString("~\x1b[0K\r\n");
 			}
+			printedLine = 1;
 			continue;
-		} else if (y == E.cy) {
-			drawRowAt(filerow,E.coloff,
-				  E.row[filerow].rsize - E.coloff);
-		} else {
-			drawRowAt(filerow,0,E.row[filerow].rsize);
 		}
+
+		printedLine = drawRowAt(filerow,E.screenrows - y);
+
+		if (i == E.cy)
+			cursorY = y;
+		if (filerow < E.numrows)
+			E.rowBottom = i;
 
 		writeString("\x1b[39m");
 		writeString("\x1b[0K");
 		writeString("\r\n");
 	}
 
-    /* Create a one row status. */
+	/* Create a one row status. */
 	char status[80],rstatus[80];
 	int len = snprintf(status,sizeof(status),"%s",
 			   E.mode == MODE_INSERT ? "-- INSERT --" :
 			   E.mode == MODE_VISUAL ? "-- VISUAL --" :"");
 	int rlen = snprintf(rstatus,sizeof(rstatus),"%d,%d    %d%%",
-			    E.rowoff + E.cy + 1,E.coloff + E.cx + 1,
+			    E.rowoff + E.cy + 1,E.cx + 1,
 			    E.numrows ? E.rowoff * 100 / E.numrows : 100);
 	if (len > E.screencols)
 		len = E.screencols;
@@ -754,16 +773,23 @@ void editorRefreshScreen(void)
 	int filerow = E.rowoff + E.cy;
 	erow *row = (filerow >= E.numrows) ? NULL : &E.row[filerow];
 	if (row) {
-		for (int i = E.coloff;
-		     i < (E.cx + E.coloff) && i < row->size;
-		     i++) {
-			if (row->chars[i] == TAB)
-				cx += 7 - cx % 8;
+		for (int i = 0;i < E.cx && i < row->size;i++) {
 			int width = wcwidth(row->chars[i]);
-			cx += width >= 0 ? width : 1;
+			width = width >= 0		? width		:
+			        row->chars[i] == TAB	? 8 - cx % 8	:
+							  1;
+			cursorY += cx + width < E.screencols ? 0 : 1;
+			cx = cx + width < E.screencols	? cx + width	:
+			     row->chars[i] == TAB	? E.screencols - cx -
+							  width		:
+							  width;
 		}
 	}
-	printf("\x1b[%d;%dH",E.cy + 1,cx + 1);
+
+
+	// When the last line is too long to be displayed completely
+	cursorY = cursorY > E.screenrows ? E.screenrows : cursorY;
+	printf("\x1b[%d;%dH",cursorY + 1,cx + 1);
 	writeString("\x1b[?25h");		// Show cursor
 	fflush(stdout);				// stdout is block-buffered
 	return;
@@ -774,36 +800,30 @@ void editorRefreshScreen(void)
 /* Handle cursor position change because arrow keys were pressed. */
 void editorMoveCursor(int key)
 {
-	int filerow = E.rowoff+E.cy;
-	int filecol = E.coloff+E.cx;
-	int rowlen;
+	int filerow = E.rowoff + E.cy;
 	erow *row = (filerow >= E.numrows) ? NULL : &E.row[filerow];
+	int leftWidth = editorWidthFrom(0);
 
 	switch(key) {
 		case ARROW_LEFT:
-			if (E.cx == 0) {
-				if (E.coloff)
-					E.coloff--;
-			} else {
+			if (E.cx)
 				E.cx--;
-			}
-			break;
+			return;
 		case ARROW_RIGHT:
-			if (row && filecol < row->size) {
-				if (E.cx == E.screencols - 1) {
-					E.coloff++;
-				} else {
-					E.cx++;
-				}
-			}
-			break;
+			if (row && E.cx < row->size - 1)
+				E.cx++;
+			return;
 		case ARROW_UP:
-			if (E.cy)
+			if (E.cy) {
 				E.cy--;
+			} else {
+				if (E.rowoff)
+					E.rowoff--;
+			}
 			break;
 		case ARROW_DOWN:
-			if (filerow < E.numrows) {
-				if (E.cy == E.screenrows - 1) {
+			if (filerow < E.numrows - 1) {
+				if (E.cy == E.rowBottom && E.isScreenFull) {
 					E.rowoff++;
 				} else {
 					E.cy++;
@@ -811,18 +831,24 @@ void editorMoveCursor(int key)
 			}
 			break;
 	}
-    /* Fix cx if the current line has not enough chars. */
-	filerow = E.rowoff + E.cy;
-	filecol = E.coloff + E.cx;
-	row = (filerow >= E.numrows) ? NULL : &E.row[filerow];
-	rowlen = row ? row->size : 0;
-	if (filecol > rowlen) {
-		E.cx -= filecol - rowlen;
-		if (E.cx < 0) {
-			E.coloff += E.cx;
-			E.cx = 0;
-		}
+
+	/*
+	 *	When moving the cursor up/down,keeping the horizontal position
+	 *	approximately equal (precisely the same may not be possible,
+	 *	as wide characters (CJK) cannot be splitted)
+	 */
+	row = E.row + E.cy + E.rowoff;
+	int cx = 0,width = 0;
+	while (cx < row->size && width <= leftWidth) {
+		int t = wcwidth(row->chars[cx]);
+		width += t >= 0				? t		:
+			 row->chars[cx] == TAB		? 8 - width % 8	:
+							  1;
+		cx++;
 	}
+	E.cx = cx > 0 ? cx - 1 : 0;
+
+	return;
 }
 
 void editorReplaceChar(int y,int x,int new)
@@ -899,33 +925,30 @@ static inline void deleteRange(int y,int x,int length)
 
 static inline void processKeyNormal(int fd,int key)
 {
-	int y = E.cy + E.rowoff,x = E.cx + E.coloff;
+	int y = E.cy + E.rowoff;
 	switch (key) {
 		case 'd':
 			key = editorReadKey(fd);
 			if (key == 'd') {
 				editorDelRow(y);
 			} else if (key == '$') {
-				deleteRange(y,x,E.row[y].size - x);
+				deleteRange(y,E.cx,E.row[y].size - E.cx);
 			} else if (key == '0') {
-				deleteRange(y,0,x);
+				deleteRange(y,0,E.cx);
 				E.cx = 0;
 			}
 			break;
 		case '$':
 		case END_KEY:
-			E.cx	= E.row[y].size <= E.screencols ?
-				  E.row[y].size : E.screencols;
-			E.coloff= E.row[y].size <= E.screencols ?
-				  0 : E.row[y].size - E.cx;
+			E.cx = E.row[y].size - 1;
 			break;
 		case '0':
 		case HOME_KEY:
-			E.cx	= 0;
-			E.coloff= 0;
+			E.cx = 0;
 			break;
 		case 'o':
 			editorInsertRow(y + 1,L"",0);
+			editorRefreshScreen();
 			editorMoveCursor(ARROW_DOWN);
 			E.mode = MODE_INSERT;
 			break;
@@ -961,7 +984,6 @@ static inline void processKeyNormal(int fd,int key)
 			key = editorReadKey(fd);
 			if (key == 'g') {
 				E.rowoff = 0;
-				E.coloff = 0;
 				E.cx	 = 0;
 				E.cy	 = 0;
 			}
@@ -971,18 +993,17 @@ static inline void processKeyNormal(int fd,int key)
 						E.numrows - E.screenrows :
 						0;
 			E.cy		= E.numrows > E.screenrows ?
-						E.screenrows :
-						E.numrows;
+						E.screenrows  - 1:
+						E.numrows - 1;
 			E.cx		= 0;
-			E.coloff	= 0;
 			break;
 		case 'x':
 			if (E.row[y].size)
-				editorRowDelChar(E.row + y,x);
+				editorRowDelChar(E.row + y,E.cx);
 			break;
 		case 'r':
 			key = editorReadKey(fd);
-			editorReplaceChar(y,x,key);
+			editorReplaceChar(y,E.cx,key);
 			break;
 		case ':':
 			commandMode(fd);
@@ -997,6 +1018,7 @@ static inline void processKeyInsert(int key)
 {
 	switch (key) {
 		case ESC:
+			editorMoveCursor(ARROW_LEFT);
 			E.mode = MODE_NORMAL;
 			break;
 		case ENTER:
@@ -1082,13 +1104,14 @@ void initEditor(void)
 {
 	E.cx		= 0;
 	E.cy		= 0;
+	E.rowBottom	= 0;
 	E.rowoff	= 0;
-	E.coloff	= 0;
 	E.numrows	= 0;
 	E.row		= NULL;
 	E.dirty		= 0;
 	E.filename	= NULL;
 	E.mode		= MODE_NORMAL;
+	E.isScreenFull	= false;
 	updateWindowSize();
 	signal(SIGWINCH, handleSigWinCh);
 }
