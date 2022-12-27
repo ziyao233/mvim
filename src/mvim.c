@@ -131,8 +131,20 @@ void disableRawMode(int fd) {
 }
 
 /* Called at exit to avoid remaining in raw mode. */
-void editorAtExit(void) {
-    disableRawMode(STDIN_FILENO);
+void editorAtExit(void)
+{
+	disableRawMode(STDIN_FILENO);
+
+	for (int i = 0;i < E.numrows;i++) {
+		free(E.row[i].chars);
+		free(E.row[i].render);
+	}
+	free(E.row);
+	free(E.filename);
+
+	/*	Reset cursor position	*/
+	printf("\x1b[%d;0H\x1b[0K",E.screenrows + 1);
+	return;
 }
 
 /* Raw mode: 1960 magic shit. */
@@ -873,7 +885,8 @@ static inline void commandMode(int fd)
 {
 	disableRawMode(fd);
 
-	printf("\x1b[%d;%dH:",E.screenrows,0);
+	// Overwrite the status line
+	printf("\x1b[%d;%dH\x1b[0K:",E.screenrows + 1,0);
 	fflush(stdout);			// stdout is block-buffered
 
 	char *cmd = NULL;
@@ -904,6 +917,8 @@ static inline void commandMode(int fd)
 			}
 		}
 		exit(0);
+	} else if (!*cmd) {
+		goto end;
 	} else {
 		puts(cmd);
 		commandModeError(fd,"Unknown command");
@@ -931,6 +946,8 @@ static inline void processKeyNormal(int fd,int key)
 			key = editorReadKey(fd);
 			if (key == 'd') {
 				editorDelRow(y);
+				if (!E.numrows)
+					editorInsertRow(0,L"",0);
 			} else if (key == '$') {
 				deleteRange(y,E.cx,E.row[y].size - E.cx);
 			} else if (key == '0') {
@@ -1126,6 +1143,11 @@ int main(int argc, char **argv)
 	setlocale(LC_ALL,"");
 	initEditor();
 	editorOpen(argv[1]);
+
+	/*	Make sure there is at last one row	*/
+	if (!E.numrows)
+		editorInsertRow(0,L"",0);
+
 	enableRawMode(STDIN_FILENO);
 	atexit(editorAtExit);
 	while(1) {
