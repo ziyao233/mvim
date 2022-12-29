@@ -493,8 +493,8 @@ void editorRowDelChar(erow *row, int at)
 		return;
 	memmove(row->chars + at,row->chars + at + 1,sizeof(wchar_t) *
 						    (row->size - at));
-	editorUpdateRow(row);
 	row->size--;
+	editorUpdateRow(row);
 	E.dirty++;
 	return;
 }
@@ -676,7 +676,7 @@ int editorWidthFrom(int start)
 
 /* ============================= Terminal update ============================ */
 
-static inline int drawRowAt(int at,int remainSpace)
+static inline int drawRowAt(int at,int remainSpace,bool write)
 {
 	erow *row = E.row + at;
 	int line = 0;
@@ -686,20 +686,23 @@ static inline int drawRowAt(int at,int remainSpace)
 		t = t < 0 ? 1 : t;
 
 		/*	Wrapping	*/
-		if (width + t >= E.screencols) {
+		if (width + t > E.screencols) {
 			width = 0;
-			writeString("\0x1b[0K]\r\n");
+			if (write)
+				writeString("\x1b[0K\r\n");
 			line++;
-			if (line >= remainSpace)
+			if (line > remainSpace)
 				break;
 		}
 
-		if (!iswprint(row->render[i])) {
-			putchar('?');
-		} else {
-			char s[MB_LEN_MAX];
-			s[wctomb(s,row->render[i])] = '\0';
-			writeString(s);
+		if (write) {
+			if (!iswprint(row->render[i])) {
+				putchar('?');
+			} else {
+				char s[MB_LEN_MAX];
+				s[wctomb(s,row->render[i])] = '\0';
+				writeString(s);
+			}
 		}
 		width += t;
 	}
@@ -709,7 +712,7 @@ static inline int drawRowAt(int at,int remainSpace)
 
 /* This function writes the whole screen using VT100 escape characters
  * starting from the logical state of the editor in the global state 'E'. */
-void editorRefreshScreen(void)
+void editorRefreshScreen(bool write)
 {
 	writeString("\x1b[?25l");	// Hide cursor.
 	writeString("\x1b[H");		// Go home.
@@ -721,6 +724,8 @@ void editorRefreshScreen(void)
 
 		if (filerow >= E.numrows) {
 			E.isScreenFull = false;
+			if (!write)
+				continue;
 			if (!E.numrows && printedLine == E.screenrows / 2) {
 				char welcome[80];
 				int wellen = snprintf(welcome,sizeof(welcome),
@@ -734,7 +739,6 @@ void editorRefreshScreen(void)
 					putchar(' ');
 
 				writeString(welcome);
-				E.isScreenFull = false;
 			} else {
 				writeString("~\x1b[0K\r\n");
 			}
@@ -742,17 +746,22 @@ void editorRefreshScreen(void)
 			continue;
 		}
 
-		printedLine = drawRowAt(filerow,E.screenrows - y);
+		printedLine = drawRowAt(filerow,E.screenrows - y,write);
 
 		if (i == E.cy)
 			cursorY = y;
 		if (filerow < E.numrows)
 			E.rowBottom = i;
 
-		writeString("\x1b[39m");
-		writeString("\x1b[0K");
-		writeString("\r\n");
+		if (write) {
+			writeString("\x1b[39m");
+			writeString("\x1b[0K");
+			writeString("\r\n");
+		}
 	}
+
+	if (!write)
+		return;
 
 	/* Create a one row status. */
 	char status[80],rstatus[80];
@@ -792,15 +801,13 @@ void editorRefreshScreen(void)
 							  1;
 			cursorY += cx + width < E.screencols ? 0 : 1;
 			cx = cx + width < E.screencols	? cx + width	:
-			     row->chars[i] == TAB	? E.screencols - cx -
-							  width		:
-							  width;
+			     row->chars[i] == TAB	? cx + width -
+							  E.screencols	:
+							  0;
 		}
 	}
 
 
-	// When the last line is too long to be displayed completely
-	cursorY = cursorY > E.screenrows ? E.screenrows : cursorY;
 	printf("\x1b[%d;%dH",cursorY + 1,cx + 1);
 	writeString("\x1b[?25h");		// Show cursor
 	fflush(stdout);				// stdout is block-buffered
@@ -809,7 +816,6 @@ void editorRefreshScreen(void)
 
 /* ========================= Editor events handling  ======================== */
 
-/* Handle cursor position change because arrow keys were pressed. */
 void editorMoveCursor(int key)
 {
 	int filerow = E.rowoff + E.cy;
@@ -822,7 +828,7 @@ void editorMoveCursor(int key)
 				E.cx--;
 			return;
 		case ARROW_RIGHT:
-			if (row && E.cx < row->size - 1)
+			if (row && E.cx < row->size - (E.mode != MODE_INSERT))
 				E.cx++;
 			return;
 		case ARROW_UP:
@@ -837,6 +843,8 @@ void editorMoveCursor(int key)
 			if (filerow < E.numrows - 1) {
 				if (E.cy == E.rowBottom && E.isScreenFull) {
 					E.rowoff++;
+					editorRefreshScreen(false);
+					E.cy = E.rowBottom;
 				} else {
 					E.cy++;
 				}
@@ -965,13 +973,13 @@ static inline void processKeyNormal(int fd,int key)
 			break;
 		case 'o':
 			editorInsertRow(y + 1,L"",0);
-			editorRefreshScreen();
-			editorMoveCursor(ARROW_DOWN);
 			E.mode = MODE_INSERT;
+			editorRefreshScreen(false);
+			editorMoveCursor(ARROW_DOWN);
 			break;
 		case 'a':
-			editorMoveCursor(ARROW_RIGHT);
 			E.mode = MODE_INSERT;
+			editorMoveCursor(ARROW_RIGHT);
 			break;
 		case 'i':
 			E.mode = MODE_INSERT;
@@ -1006,13 +1014,15 @@ static inline void processKeyNormal(int fd,int key)
 			}
 			break;
 		case 'G':
-			E.rowoff	= E.numrows > E.screenrows ?
-						E.numrows - E.screenrows :
-						0;
-			E.cy		= E.numrows > E.screenrows ?
-						E.screenrows  - 1:
-						E.numrows - 1;
-			E.cx		= 0;
+			E.rowoff	= E.numrows - 1;
+			E.cy		= 0;
+			do {
+				E.rowoff--;
+				E.cy++;
+				editorRefreshScreen(false);
+			} while (E.rowBottom + E.rowoff == E.numrows - 1);
+			E.rowoff++;
+			E.cy--;
 			break;
 		case 'x':
 			if (E.row[y].size)
@@ -1114,7 +1124,7 @@ void handleSigWinCh(int unused)
 		E.cy = E.screenrows - 1;
 	if (E.cx > E.screencols)
 		E.cx = E.screencols - 1;
-	editorRefreshScreen();
+	editorRefreshScreen(true);
 }
 
 void initEditor(void)
@@ -1151,7 +1161,7 @@ int main(int argc, char **argv)
 	enableRawMode(STDIN_FILENO);
 	atexit(editorAtExit);
 	while(1) {
-		editorRefreshScreen();
+		editorRefreshScreen(true);
 		editorProcessKeypress(STDIN_FILENO);
 	}
 
