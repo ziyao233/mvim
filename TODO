@@ -1,0 +1,11 @@
+Highlight render
+Reduce memory usage
+Undo/Redo
+Visual mode
+Copy/paste/select
+Configuration
+Syntax highlight
+Line number
+Jump to a line
+Fix that the cursor position is wrong when a line with wide characters is
+	auto-wrapped

@@ -928,7 +928,6 @@ static inline void commandMode(int fd)
 	} else if (!*cmd) {
 		goto end;
 	} else {
-		puts(cmd);
 		commandModeError(fd,"Unknown command");
 	}
 
@@ -937,6 +936,25 @@ end:
 
 	enableRawMode(fd);
 	return;
+}
+
+static wchar_t readWideChar(int startByte)
+{
+	int length = 0;
+	char tmp[16] = {startByte};
+	while (startByte & 0x80) {
+		length++;
+		startByte <<= 1;
+	}
+	if (!length)
+		return startByte;
+
+	// No fread()! The inner buffer's state is unknown
+	read(STDIN_FILENO,tmp + 1,length - 1);
+	wchar_t wideChar = 0;
+	if (mbtowc(&wideChar,tmp,length) < 0)
+		return L' ';
+	return wideChar;
 }
 
 static inline void deleteRange(int y,int x,int length)
@@ -1030,7 +1048,7 @@ static inline void processKeyNormal(int fd,int key)
 			break;
 		case 'r':
 			key = editorReadKey(fd);
-			editorReplaceChar(y,E.cx,key);
+			editorReplaceChar(y,E.cx,readWideChar(key));
 			break;
 		case ':':
 			commandMode(fd);
@@ -1067,7 +1085,7 @@ static inline void processKeyInsert(int key)
 			editorMoveCursor(ARROW_DOWN);
 			break;
 		default:
-			editorInsertChar(key);
+			editorInsertChar(readWideChar(key));
 			break;
 	}
 	return;
