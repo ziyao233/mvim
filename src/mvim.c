@@ -58,11 +58,27 @@
 #include<fcntl.h>
 #include<signal.h>
 
+typedef enum {
+	COLOR_BLACK	= 0,COLOR_RED,COLOR_GREEN,COLOR_YELLOW,COLOR_BLUE,
+	COLOR_MAGENTA,COLOR_CYAN,COLOR_WHITE
+} Color;
+
+typedef struct {
+	unsigned int unused	: 1;	// To simplify drawRowAt()
+	unsigned int bold	: 1;	// [1m
+	unsigned int italic	: 1;	// [3m
+	unsigned int underline	: 1;	// [4m
+	unsigned int reverse	: 1;	// [7m
+	unsigned int color	: 3;
+} Char_Attr;
+
 /* This structure represents a single line of the file we are editing. */
 typedef struct erow {
 	int idx;		// Row index in the file, zero-based.
 	int size;		// Size of the row, excluding the null term.
 	wchar_t *chars;		// Row content.
+	int asize;		// Size of attr
+	Char_Attr *attr;	// Character attributes
 } erow;
 
 static struct editorConfig {
@@ -133,8 +149,10 @@ void editorAtExit(void)
 {
 	disableRawMode(STDIN_FILENO);
 
-	for (int i = 0;i < E.numrows;i++)
+	for (int i = 0;i < E.numrows;i++) {
 		free(E.row[i].chars);
+		free(E.row[i].attr);
+	}
 	free(E.row);
 	free(E.filename);
 
@@ -321,7 +339,18 @@ failed:
  */
 void editorUpdateRow(erow *row)
 {
-	(void)row;
+	if (row->size != row->asize) {
+		row->attr = realloc(row->attr,sizeof(Char_Attr) * row->size);
+		row->asize = row->size;
+	}
+
+	for (int i = 0;i < row->asize;i++) {
+		row->attr[i] = (Char_Attr) {
+						.color = COLOR_RED,
+						.bold  = 1,
+					   };
+	}
+
 	return;
 }
 
@@ -340,6 +369,7 @@ void editorInsertRow(int at,const wchar_t *s,size_t len)
 	}
 
 	E.row[at].size	= len;
+	E.row[at].asize	= 0;
 	E.row[at].chars	= malloc(sizeof(wchar_t) * (len + 1));
 	wcsncpy(E.row[at].chars,s,len);
 	E.row[at].chars[len]	= L'\0';
@@ -364,6 +394,7 @@ void editorInsertRowMb(int at,const char *mbs)
 void editorFreeRow(erow *row)
 {
 	free(row->chars);
+	free(row->attr);
 	return;
 }
 
@@ -518,7 +549,7 @@ void editorInsertNewline(void)
 	}
 
 fixcursor:
-	if (E.cy == E.rowBottom && E.isScreenFull) {
+	if (E.cy == E.rowBottom && E.isScreenFull)
 		E.rowoff++;
 	else
 		E.cy++;
@@ -644,11 +675,37 @@ int editorWidthFrom(int start)
 
 /* ============================= Terminal update ============================ */
 
+static inline void switchAttr(Char_Attr *old,Char_Attr *new)
+{
+	if (old->color != new->color)
+		printf("\x1b[3%um",(unsigned int)new->color);
+	old->color = new->color;
+
+	if (*(uint8_t*)old == *(uint8_t*)new)
+		return;
+
+	writeString("\x1b[0m");
+	if (new->bold)
+		writeString("\x1b[1m");
+	if (new->italic)
+		writeString("\x1b[3m");
+	if (new->underline)
+		writeString("\x1b[4m");
+	if (new->reverse)
+		writeString("\x1b[7m");
+	printf("\x1b[3%um",(unsigned int)new->color);
+
+	return;
+}
+
 static inline int drawRowAt(int at,int remainSpace,bool write)
 {
 	erow *row = E.row + at;
 	int line = 0;
 
+	Char_Attr lastAttr = (Char_Attr) {
+						.unused = 1,
+					 };
 	for (int i = 0,width = 0;i < row->size;i++) {
 		int t = wcwidth(row->chars[i]);
 		// Normal characters, TAB or control charaters
@@ -666,6 +723,10 @@ static inline int drawRowAt(int at,int remainSpace,bool write)
 				break;
 		}
 
+		if (*(uint8_t*)(row->attr + i) != *(uint8_t*)&lastAttr) {
+			switchAttr(&lastAttr,row->attr + i);
+			lastAttr = row->attr[i];
+		}
 		if (write) {
 			if (row->chars[i] == TAB) {
 				/*	Handle TABs	*/
@@ -731,7 +792,8 @@ void editorRefreshScreen(bool write)
 			E.rowBottom = i;
 
 		if (write) {
-			writeString("\x1b[39m");
+			writeString("\x1b[0m");
+			writeString("\x1b[37m");
 			writeString("\x1b[0K");
 			writeString("\r\n");
 		}
@@ -1084,7 +1146,6 @@ static inline void processKeyVisual(int key)
  * is typing stuff on the terminal. */
 void editorProcessKeypress(int fd) {
 	int key = editorReadKey(fd);
-	switch (E.mode) {
 	if (E.mode == MODE_NORMAL)
 		processKeyNormal(fd,key);
 	else if (E.mode == MODE_INSERT)
