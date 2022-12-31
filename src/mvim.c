@@ -520,9 +520,9 @@ void editorInsertNewline(void)
 fixcursor:
 	if (E.cy == E.rowBottom && E.isScreenFull) {
 		E.rowoff++;
-	} else {
+	else
 		E.cy++;
-	}
+
 	E.cx = 0;
 	return;
 }
@@ -800,33 +800,33 @@ void editorMoveCursor(int key)
 	int leftWidth = editorWidthFrom(0);
 
 	switch(key) {
-		case ARROW_LEFT:
-			if (E.cx)
-				E.cx--;
-			return;
-		case ARROW_RIGHT:
-			if (row && E.cx < row->size - (E.mode != MODE_INSERT))
-				E.cx++;
-			return;
-		case ARROW_UP:
-			if (E.cy) {
-				E.cy--;
+	case ARROW_LEFT:
+		if (E.cx)
+			E.cx--;
+		return;
+	case ARROW_RIGHT:
+		if (row && E.cx < row->size - (E.mode != MODE_INSERT))
+			E.cx++;
+		return;
+	case ARROW_UP:
+		if (E.cy) {
+			E.cy--;
+		} else {
+			if (E.rowoff)
+				E.rowoff--;
+		}
+		break;
+	case ARROW_DOWN:
+		if (filerow < E.numrows - 1) {
+			if (E.cy == E.rowBottom && E.isScreenFull) {
+				E.rowoff++;
+				editorRefreshScreen(false);
+				E.cy = E.rowBottom;
 			} else {
-				if (E.rowoff)
-					E.rowoff--;
+				E.cy++;
 			}
-			break;
-		case ARROW_DOWN:
-			if (filerow < E.numrows - 1) {
-				if (E.cy == E.rowBottom && E.isScreenFull) {
-					E.rowoff++;
-					editorRefreshScreen(false);
-					E.cy = E.rowBottom;
-				} else {
-					E.cy++;
-				}
-			}
-			break;
+		}
+		break;
 	}
 
 	/*
@@ -945,93 +945,93 @@ static inline void processKeyNormal(int fd,int key)
 {
 	int y = E.cy + E.rowoff;
 	switch (key) {
-		case 'd':
-			key = editorReadKey(fd);
-			if (key == 'd') {
-				editorDelRow(y);
-				if (!E.numrows)
-					editorInsertRow(0,L"",0);
-			} else if (key == '$') {
-				deleteRange(y,E.cx,E.row[y].size - E.cx);
-			} else if (key == '0') {
-				deleteRange(y,0,E.cx);
-				E.cx = 0;
-			}
-			break;
-		case '$':
-		case END_KEY:
-			E.cx = E.row[y].size - 1;
-			break;
-		case '0':
-		case HOME_KEY:
+	case 'd':
+		key = editorReadKey(fd);
+		if (key == 'd') {
+			editorDelRow(y);
+			if (!E.numrows)
+				editorInsertRow(0,L"",0);
+		} else if (key == '$') {
+			deleteRange(y,E.cx,E.row[y].size - E.cx);
+		} else if (key == '0') {
+			deleteRange(y,0,E.cx);
 			E.cx = 0;
-			break;
-		case 'o':
-			editorInsertRow(y + 1,L"",0);
-			E.mode = MODE_INSERT;
+		}
+		break;
+	case '$':
+	case END_KEY:
+		E.cx = E.row[y].size - 1;
+		break;
+	case '0':
+	case HOME_KEY:
+		E.cx = 0;
+		break;
+	case 'o':
+		editorInsertRow(y + 1,L"",0);
+		E.mode = MODE_INSERT;
+		editorRefreshScreen(false);
+		editorMoveCursor(ARROW_DOWN);
+		break;
+	case 'a':
+		E.mode = MODE_INSERT;
+		editorMoveCursor(ARROW_RIGHT);
+		break;
+	case 'i':
+		E.mode = MODE_INSERT;
+		break;
+	case 'v':
+		E.mode = MODE_VISUAL;
+		break;
+	case 'h':
+	case ARROW_LEFT:
+	case BACKSPACE:
+		editorMoveCursor(ARROW_LEFT);
+		break;
+	case 'l':
+	case ARROW_RIGHT:
+		editorMoveCursor(ARROW_RIGHT);
+		break;
+	case 'j':
+	case ARROW_DOWN:
+	case ENTER:
+		editorMoveCursor(ARROW_DOWN);
+		break;
+	case 'k':
+	case ARROW_UP:
+		editorMoveCursor(ARROW_UP);
+		break;
+	case 'g':
+		key = editorReadKey(fd);
+		if (key == 'g') {
+			E.rowoff = 0;
+			E.cx	 = 0;
+			E.cy	 = 0;
+		}
+		break;
+	case 'G':
+		E.rowoff	= E.numrows - 1;
+		E.cy		= 0;
+		do {
+			E.rowoff--;
+			E.cy++;
 			editorRefreshScreen(false);
-			editorMoveCursor(ARROW_DOWN);
-			break;
-		case 'a':
-			E.mode = MODE_INSERT;
-			editorMoveCursor(ARROW_RIGHT);
-			break;
-		case 'i':
-			E.mode = MODE_INSERT;
-			break;
-		case 'v':
-			E.mode = MODE_VISUAL;
-			break;
-		case 'h':
-		case ARROW_LEFT:
-		case BACKSPACE:
-			editorMoveCursor(ARROW_LEFT);
-			break;
-		case 'l':
-		case ARROW_RIGHT:
-			editorMoveCursor(ARROW_RIGHT);
-			break;
-		case 'j':
-		case ARROW_DOWN:
-		case ENTER:
-			editorMoveCursor(ARROW_DOWN);
-			break;
-		case 'k':
-		case ARROW_UP:
-			editorMoveCursor(ARROW_UP);
-			break;
-		case 'g':
-			key = editorReadKey(fd);
-			if (key == 'g') {
-				E.rowoff = 0;
-				E.cx	 = 0;
-				E.cy	 = 0;
-			}
-			break;
-		case 'G':
-			E.rowoff	= E.numrows - 1;
-			E.cy		= 0;
-			do {
-				E.rowoff--;
-				E.cy++;
-				editorRefreshScreen(false);
-			} while (E.rowBottom + E.rowoff == E.numrows - 1);
-			E.rowoff++;
-			E.cy--;
-			break;
-		case 'x':
-			if (E.row[y].size)
-				editorRowDelChar(E.row + y,E.cx);
-			break;
-		case 'r':
-			key = editorReadKey(fd);
-			editorReplaceChar(y,E.cx,readWideChar(key));
-			break;
-		case ':':
-			commandMode(fd);
-			break;
-		default:
-			break;
+		} while (E.rowBottom + E.rowoff == E.numrows - 1);
+		E.rowoff++;
+		E.cy--;
+		break;
+	case 'x':
+		if (E.row[y].size)
+			editorRowDelChar(E.row + y,E.cx);
+		break;
+	case 'r':
+		key = editorReadKey(fd);
+		editorReplaceChar(y,E.cx,readWideChar(key));
+		break;
+	case ':':
+		commandMode(fd);
+		break;
+	default:
+		break;
 	}
 	return;
 }
@@ -1039,31 +1039,31 @@ static inline void processKeyNormal(int fd,int key)
 static inline void processKeyInsert(int key)
 {
 	switch (key) {
-		case ESC:
-			editorMoveCursor(ARROW_LEFT);
-			E.mode = MODE_NORMAL;
-			break;
-		case ENTER:
-			editorInsertNewline();
-			break;
-		case BACKSPACE:
-			editorDelChar();
-			break;
-		case ARROW_LEFT:
-			editorMoveCursor(ARROW_LEFT);
-			break;
-		case ARROW_RIGHT:
-			editorMoveCursor(ARROW_RIGHT);
-			break;
-		case ARROW_UP:
-			editorMoveCursor(ARROW_UP);
-			break;
-		case ARROW_DOWN:
-			editorMoveCursor(ARROW_DOWN);
-			break;
-		default:
-			editorInsertChar(readWideChar(key));
-			break;
+	case ESC:
+		editorMoveCursor(ARROW_LEFT);
+		E.mode = MODE_NORMAL;
+		break;
+	case ENTER:
+		editorInsertNewline();
+		break;
+	case BACKSPACE:
+		editorDelChar();
+		break;
+	case ARROW_LEFT:
+		editorMoveCursor(ARROW_LEFT);
+		break;
+	case ARROW_RIGHT:
+		editorMoveCursor(ARROW_RIGHT);
+		break;
+	case ARROW_UP:
+		editorMoveCursor(ARROW_UP);
+		break;
+	case ARROW_DOWN:
+		editorMoveCursor(ARROW_DOWN);
+		break;
+	default:
+		editorInsertChar(readWideChar(key));
+		break;
 	}
 	return;
 }
@@ -1071,11 +1071,11 @@ static inline void processKeyInsert(int key)
 static inline void processKeyVisual(int key)
 {
 	switch (key) {
-		case ESC:
-			E.mode = MODE_NORMAL;
-			break;
-		default:
-			break;
+	case ESC:
+		E.mode = MODE_NORMAL;
+		break;
+	default:
+		break;
 	}
 	return;
 }
@@ -1085,16 +1085,12 @@ static inline void processKeyVisual(int key)
 void editorProcessKeypress(int fd) {
 	int key = editorReadKey(fd);
 	switch (E.mode) {
-		case MODE_NORMAL:
-			processKeyNormal(fd,key);
-			break;
-		case MODE_INSERT:
-			processKeyInsert(key);
-			break;
-		case MODE_VISUAL:
-			processKeyVisual(key);
-			break;
-	}
+	if (E.mode == MODE_NORMAL)
+		processKeyNormal(fd,key);
+	else if (E.mode == MODE_INSERT)
+		processKeyInsert(key);
+	else if (E.mode == MODE_VISUAL)
+		processKeyVisual(key);
 	return;
 }
 
