@@ -62,9 +62,7 @@
 typedef struct erow {
 	int idx;		// Row index in the file, zero-based.
 	int size;		// Size of the row, excluding the null term.
-	int rsize;		// Size of the rendered row.
 	wchar_t *chars;		// Row content.
-	wchar_t *render;	// Row content "rendered" for screen (for TABs)
 } erow;
 
 static struct editorConfig {
@@ -135,10 +133,8 @@ void editorAtExit(void)
 {
 	disableRawMode(STDIN_FILENO);
 
-	for (int i = 0;i < E.numrows;i++) {
+	for (int i = 0;i < E.numrows;i++)
 		free(E.row[i].chars);
-		free(E.row[i].render);
-	}
 	free(E.row);
 	free(E.filename);
 
@@ -320,37 +316,12 @@ failed:
 
 /* ======================= Editor rows implementation ======================= */
 
-/* Update the rendered version and the syntax highlight of a row. */
+/*
+ *	Empty now, later would be used to render color attributes
+ */
 void editorUpdateRow(erow *row)
 {
-/*
- * Create a version of the row we can directly print on the screen,
- * respecting tabs, substituting non printable characters with '?'.
- */
-	free(row->render);
-	size_t allocsize = 1;			// '\0'
-	for (int i = 0; i < row->size; i++)
-		allocsize += row->chars[i] == TAB ? 8 : 1;
-
-	if (allocsize > UINT16_MAX) {
-		printf("Some line of the edited file is too long for mVim\n");
-		exit(-1);
-	}
-
-	row->render = malloc(allocsize * sizeof(wchar_t));
-	int idx = 0;
-	for (int j = 0; j < row->size; j++) {
-		if (row->chars[j] == TAB) {
-			row->render[idx++] = L' ';
-			while(idx % 8)
-				row->render[idx++] = L' ';
-		} else {
-			row->render[idx] = row->chars[j];
-			idx++;
-		}
-	}
-	row->rsize = idx;
-	row->render[idx] = '\0';
+	(void)row;
 	return;
 }
 
@@ -372,8 +343,6 @@ void editorInsertRow(int at,const wchar_t *s,size_t len)
 	E.row[at].chars	= malloc(sizeof(wchar_t) * (len + 1));
 	wcsncpy(E.row[at].chars,s,len);
 	E.row[at].chars[len]	= L'\0';
-	E.row[at].render	= NULL;
-	E.row[at].rsize		= 0;
 	E.row[at].idx		= at;
 	editorUpdateRow(E.row + at);
 	E.numrows++;
@@ -394,7 +363,6 @@ void editorInsertRowMb(int at,const char *mbs)
 /* Free row's heap allocated stuff. */
 void editorFreeRow(erow *row)
 {
-	free(row->render);
 	free(row->chars);
 	return;
 }
@@ -681,9 +649,12 @@ static inline int drawRowAt(int at,int remainSpace,bool write)
 	erow *row = E.row + at;
 	int line = 0;
 
-	for (int i = 0,width = 0;i < row->rsize;i++) {
-		int t = wcwidth(row->render[i]);
-		t = t < 0 ? 1 : t;
+	for (int i = 0,width = 0;i < row->size;i++) {
+		int t = wcwidth(row->chars[i]);
+		// Normal characters, TAB or control charaters
+		t = t >= 0			? t			:
+		    row->chars[i] == TAB	? 8 - width % 8	:
+						  1;
 
 		/*	Wrapping	*/
 		if (width + t > E.screencols) {
@@ -696,11 +667,17 @@ static inline int drawRowAt(int at,int remainSpace,bool write)
 		}
 
 		if (write) {
-			if (!iswprint(row->render[i])) {
+			if (row->chars[i] == TAB) {
+				/*	Handle TABs	*/
+				for (int i = 0;i < t;i++)
+					putchar(' ');
+			} else if (!iswprint(row->chars[i])) {
+				/*	Control characters	*/
 				putchar('?');
 			} else {
+				/*	Normal ones		*/
 				char s[MB_LEN_MAX];
-				s[wctomb(s,row->render[i])] = '\0';
+				s[wctomb(s,row->chars[i])] = '\0';
 				writeString(s);
 			}
 		}
