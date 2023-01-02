@@ -96,6 +96,8 @@ static struct editorConfig {
 		MODE_NORMAL,MODE_INSERT,MODE_VISUAL
 	} mode;
 	bool isScreenFull;	// The screen is fully used (no '~')
+	int sx,sy;		// Selected x and y, the beginnning position
+				// of select
 } E;
 
 static struct editorConfig E;
@@ -334,8 +336,37 @@ failed:
 
 /* ======================= Editor rows implementation ======================= */
 
+static inline void renderSelect(erow *row,int y)
+{
+	int sy,sx,ey,ex;
+	int cy = E.rowoff + E.cy;
+	if (cy > E.sy) {
+		ey = cy;
+		ex = E.cx;
+		sy = E.sy;
+		sx = E.sx;
+	} else if (cy == E.sy) {
+		sy = ey = cy;
+		sx = E.cx > E.sx ? E.sx : E.cx;
+		ex = E.cx > E.sx ? E.cx : E.sx;
+	} else {
+		ey = E.sy;
+		ex = E.sx;
+		sy = cy;
+		sx = E.cx;
+	}
+
+	if (y < sy || y > ey)
+		return;
+
+	for (int i = (y == sy ? sx : 0);i <= (y == ey ? ex : row->asize);i++)
+		row->attr[i].reverse = !row->attr[i].reverse;
+
+	return;
+}
+
 /*
- *	Empty now, later would be used to render color attributes
+ *	Render character attributes
  */
 void editorUpdateRow(erow *row)
 {
@@ -346,11 +377,21 @@ void editorUpdateRow(erow *row)
 
 	for (int i = 0;i < row->asize;i++) {
 		row->attr[i] = (Char_Attr) {
-						.color = COLOR_RED,
-						.bold  = 1,
+						.color	= COLOR_WHITE,
 					   };
 	}
 
+	int y = row - E.row;
+	if (E.mode == MODE_VISUAL)
+		renderSelect(row,y);
+
+	return;
+}
+
+void editorUpdateRange(int yStart,int yEnd)
+{
+	for (int i = yStart;i <= yEnd;i++)
+		editorUpdateRow(E.row + i);
 	return;
 }
 
@@ -382,8 +423,10 @@ void editorInsertRow(int at,const wchar_t *s,size_t len)
 void editorInsertRowMb(int at,const char *mbs)
 {
 	size_t charNum = mbstowcs(NULL,mbs,0);
-	if (charNum == (size_t)(-1))
+	if (charNum == (size_t)(-1)) {
 		perror("Invalid multibyte text");
+		exit(-1);
+	}
 	wchar_t *s = malloc(sizeof(wchar_t) * (charNum + 1));
 	mbstowcs(s,mbs,charNum + 1);
 	editorInsertRow(at,s,charNum);
@@ -1042,7 +1085,9 @@ static inline void processKeyNormal(int fd,int key)
 		E.mode = MODE_INSERT;
 		break;
 	case 'v':
-		E.mode = MODE_VISUAL;
+		E.mode	= MODE_VISUAL;
+		E.sy	= y;
+		E.sx	= E.cx;
 		break;
 	case 'h':
 	case ARROW_LEFT:
@@ -1098,8 +1143,9 @@ static inline void processKeyNormal(int fd,int key)
 	return;
 }
 
-static inline void processKeyInsert(int key)
+static inline void processKeyInsert(int fd,int key)
 {
+	(void)fd;
 	switch (key) {
 	case ESC:
 		editorMoveCursor(ARROW_LEFT);
@@ -1130,15 +1176,68 @@ static inline void processKeyInsert(int key)
 	return;
 }
 
-static inline void processKeyVisual(int key)
+static inline void processKeyVisual(int fd,int key)
 {
+	int y = E.rowoff + E.cy;
 	switch (key) {
+	case 'v':
 	case ESC:
 		E.mode = MODE_NORMAL;
+		editorUpdateRange(y < E.sy ? y : E.sy,y < E.sy ? E.sy : y);
+		break;
+	case '$':
+	case END_KEY:
+		E.cx = E.row[E.cy + E.rowoff].size - 1;
+		break;
+	case '0':
+	case HOME_KEY:
+		E.cx = 0;
+		break;
+	case 'h':
+	case ARROW_LEFT:
+	case BACKSPACE:
+		editorMoveCursor(ARROW_LEFT);
+		break;
+	case 'l':
+	case ARROW_RIGHT:
+		editorMoveCursor(ARROW_RIGHT);
+		break;
+	case 'j':
+	case ARROW_DOWN:
+	case ENTER:
+		editorMoveCursor(ARROW_DOWN);
+		editorUpdateRange(y,E.rowoff + E.cy);
+		break;
+	case 'k':
+	case ARROW_UP:
+		editorMoveCursor(ARROW_UP);
+		editorUpdateRange(E.rowoff + E.cy,y);
+		break;
+	case 'g':
+		key = editorReadKey(fd);
+		if (key == 'g') {
+			E.rowoff = 0;
+			E.cx	 = 0;
+			E.cy	 = 0;
+			editorUpdateRange(0,y);
+		}
+		break;
+	case 'G':
+		E.rowoff	= E.numrows - 1;
+		E.cy		= 0;
+		do {
+			E.rowoff--;
+			E.cy++;
+			editorRefreshScreen(false);
+		} while (E.rowBottom + E.rowoff == E.numrows - 1);
+		E.rowoff++;
+		E.cy--;
+		editorUpdateRange(y,E.numrows);
 		break;
 	default:
 		break;
 	}
+	editorUpdateRow(E.row + E.cy);
 	return;
 }
 
@@ -1149,9 +1248,9 @@ void editorProcessKeypress(int fd) {
 	if (E.mode == MODE_NORMAL)
 		processKeyNormal(fd,key);
 	else if (E.mode == MODE_INSERT)
-		processKeyInsert(key);
+		processKeyInsert(fd,key);
 	else if (E.mode == MODE_VISUAL)
-		processKeyVisual(key);
+		processKeyVisual(fd,key);
 	return;
 }
 
