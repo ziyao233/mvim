@@ -1,8 +1,8 @@
 # mVim
 # File:/src/makefile
-# Date:2022.12.23
+# Date:2023.01.03
 # By 2-BSD License.
-# Copyright(C) 2022 Ziyao. All rights reserved.
+# Copyright(C) 2022-2023 Ziyao. All rights reserved.
 
 # Tools
 CC		:= c99
@@ -44,4 +44,4 @@ disbuild:
 
 install: build
 	@$(ECHO) [INSTALL] $(FILE_OUTPUT) $(DIR_INSTALL)
-	@$(COPY) -D 0755 -p $(FILE_OUTPUT) $(DIR_INSTALL)
+	@$(INSTALL) -m0755 -D -p $(FILE_OUTPUT) $(DIR_INSTALL)

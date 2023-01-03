@@ -996,6 +996,21 @@ void editorMoveCursor(int key)
 	return;
 }
 
+void editorMoveCursorTo(int y,int x)
+{
+	E.rowoff	= y;
+	E.cy		= 0;
+	E.cx		= x;
+	do {
+		E.rowoff--;
+		E.cy++;
+		editorRefreshScreen(false);
+	} while (E.rowBottom + E.rowoff == y);
+	E.rowoff++;
+	E.cy--;
+	return;
+}
+
 void editorReplaceChar(int y,int x,int new)
 {
 	if (E.row[y].size)
@@ -1159,15 +1174,7 @@ static inline void processKeyNormal(int fd,int key)
 		}
 		break;
 	case 'G':
-		E.rowoff	= E.numrows - 1;
-		E.cy		= 0;
-		do {
-			E.rowoff--;
-			E.cy++;
-			editorRefreshScreen(false);
-		} while (E.rowBottom + E.rowoff == E.numrows - 1);
-		E.rowoff++;
-		E.cy--;
+		editorMoveCursorTo(E.numrows - 1,0);
 		break;
 	case 'x':
 		if (E.row[y].size)
@@ -1294,6 +1301,16 @@ static inline void processKeyVisual(int fd,int key)
 		free(E.copyBuffer);
 		E.copyBuffer = editorCopyRange(sx,sy,ex,ey);
 		exitVisualMode(sy,ey);
+		break;
+	case 'x':
+	case 'd':	/*	Cut	*/
+		free(E.copyBuffer);
+		E.copyBuffer = editorCopyRange(sx,sy,ex,ey);
+		exitVisualMode(sy,ey);
+		editorMoveCursorTo(ey,ex);
+		do
+			editorDelChar();
+		while (E.cy >= sy || E.cx != sx);
 		break;
 	default:
 		break;
