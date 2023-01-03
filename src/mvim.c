@@ -1,6 +1,6 @@
 /* -----------------------------------------------------------------------
  *
- * Copyright (c) 2022 Ziyao.
+ * Copyright (c) 2022-2023 Ziyao.
  * Copyright (C) 2016 Salvatore Sanfilippo <antirez at gmail dot com>
  *
  * All rights reserved.
@@ -36,6 +36,7 @@
 #endif
 #define _XOPEN_SOURCE
 
+#include<assert.h>
 #include<stdlib.h>
 #include<stdio.h>
 #include<stdint.h>
@@ -98,6 +99,7 @@ static struct editorConfig {
 	bool isScreenFull;	// The screen is fully used (no '~')
 	int sx,sy;		// Selected x and y, the beginnning position
 				// of select
+	wchar_t *copyBuffer;
 } E;
 
 static struct editorConfig E;
@@ -132,8 +134,6 @@ enum KEY_ACTION {
 	PAGE_DOWN
 };
 
-void editorSetStatusMessage(const char *fmt, ...);
-
 /* ======================= Low level terminal handling ====================== */
 
 static struct termios orig_termios; /* In order to restore at exit.*/
@@ -157,6 +157,7 @@ void editorAtExit(void)
 	}
 	free(E.row);
 	free(E.filename);
+	free(E.copyBuffer);
 
 	/*	Reset cursor position	*/
 	printf("\x1b[%d;0H\x1b[0K",E.screenrows + 1);
@@ -336,30 +337,39 @@ failed:
 
 /* ======================= Editor rows implementation ======================= */
 
-static inline void renderSelect(erow *row,int y)
+static void getSelectedRange(int *sx,int *sy,int *ex,int *ey)
 {
-	int sy,sx,ey,ex;
 	int cy = E.rowoff + E.cy;
 	if (cy > E.sy) {
-		ey = cy;
-		ex = E.cx;
-		sy = E.sy;
-		sx = E.sx;
+		*ey = cy;
+		*ex = E.cx;
+		*sy = E.sy;
+		*sx = E.sx;
 	} else if (cy == E.sy) {
-		sy = ey = cy;
-		sx = E.cx > E.sx ? E.sx : E.cx;
-		ex = E.cx > E.sx ? E.cx : E.sx;
+		*sy = *ey = cy;
+		*sx = E.cx > E.sx ? E.sx : E.cx;
+		*ex = E.cx > E.sx ? E.cx : E.sx;
 	} else {
-		ey = E.sy;
-		ex = E.sx;
-		sy = cy;
-		sx = E.cx;
+		*ey = E.sy;
+		*ex = E.sx;
+		*sy = cy;
+		*sx = E.cx;
 	}
+	return;
+}
+
+static inline void renderSelect(erow *row,int y)
+{
+	if (!row->size)
+		return;
+
+	int sy,sx,ey,ex;
+	getSelectedRange(&sx,&sy,&ex,&ey);
 
 	if (y < sy || y > ey)
 		return;
 
-	for (int i = (y == sy ? sx : 0);i <= (y == ey ? ex : row->asize);i++)
+	for (int i = (y == sy ? sx : 0);i <= (y == ey ? ex : row->asize - 1);i++)
 		row->attr[i].reverse = !row->attr[i].reverse;
 
 	return;
@@ -410,6 +420,7 @@ void editorInsertRow(int at,const wchar_t *s,size_t len)
 	}
 
 	E.row[at].size	= len;
+	E.row[at].attr	= NULL;
 	E.row[at].asize	= 0;
 	E.row[at].chars	= malloc(sizeof(wchar_t) * (len + 1));
 	wcsncpy(E.row[at].chars,s,len);
@@ -633,6 +644,38 @@ void editorDelChar()
 
 	E.dirty++;
 
+	return;
+}
+
+wchar_t *editorCopyRange(int sx,int sy,int ex,int ey)
+{
+	int size = 1;				// '\0';
+	for (int i = sy;i <= ey;i++)
+		size += E.row[i].size + 1;	// '\n'
+
+	wchar_t *copy = malloc(sizeof(wchar_t) * size);
+	assert(copy);
+	copy[0] = '\0';
+
+	for (int i = sy;i <= ey;i++) {
+		if (E.row[i].chars)
+			wcsncat(copy,E.row[i].chars + (i == sy ? sx : 0),
+				i == ey ? (ex + 1 - (i == sy ? sx : 0)) :
+					  E.row[i].size);
+		wcscat(copy,L"\n");
+	}
+	return copy;
+}
+
+void editorPaste(wchar_t *s)
+{
+	for (int i = 0;s[i];i++) {
+		if (s[i] == L'\n') {
+			editorInsertNewline();
+		} else {
+			editorInsertChar(s[i]);
+		}
+	}
 	return;
 }
 
@@ -1137,6 +1180,10 @@ static inline void processKeyNormal(int fd,int key)
 	case ':':
 		commandMode(fd);
 		break;
+	case 'p':
+		if (E.copyBuffer)
+			editorPaste(E.copyBuffer);
+		break;
 	default:
 		break;
 	}
@@ -1176,14 +1223,23 @@ static inline void processKeyInsert(int fd,int key)
 	return;
 }
 
+static void exitVisualMode(int sy,int ey)
+{
+	E.mode = MODE_NORMAL;
+	editorUpdateRange(sy,ey);
+	return;
+}
+
 static inline void processKeyVisual(int fd,int key)
 {
 	int y = E.rowoff + E.cy;
+	int sx,sy,ex,ey;
+	getSelectedRange(&sx,&sy,&ex,&ey);
+
 	switch (key) {
 	case 'v':
 	case ESC:
-		E.mode = MODE_NORMAL;
-		editorUpdateRange(y < E.sy ? y : E.sy,y < E.sy ? E.sy : y);
+		exitVisualMode(sy,ey);
 		break;
 	case '$':
 	case END_KEY:
@@ -1234,10 +1290,15 @@ static inline void processKeyVisual(int fd,int key)
 		E.cy--;
 		editorUpdateRange(y,E.numrows);
 		break;
+	case 'y':	/*	Yank	*/
+		free(E.copyBuffer);
+		E.copyBuffer = editorCopyRange(sx,sy,ex,ey);
+		exitVisualMode(sy,ey);
+		break;
 	default:
 		break;
 	}
-	editorUpdateRow(E.row + E.cy);
+	editorUpdateRow(E.row + y);
 	return;
 }
 
@@ -1290,6 +1351,7 @@ void initEditor(void)
 	E.filename	= NULL;
 	E.mode		= MODE_NORMAL;
 	E.isScreenFull	= false;
+	E.copyBuffer	= NULL;
 	updateWindowSize();
 	signal(SIGWINCH, handleSigWinCh);
 }
