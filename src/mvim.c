@@ -483,7 +483,7 @@ char *editorRowsToString(int *buflen)
 
     /* Compute count of bytes */
 	for (int j = 0; j < E.numrows; j++)
-		totlen += wcstombs(NULL,E.row[j].chars,0);
+		totlen += wcstombs(NULL,E.row[j].chars,0) + 1;	// for '\n'
 	*buflen = totlen;
 	totlen++;			// '\0'
 
@@ -1112,8 +1112,11 @@ static inline void processKeyNormal(int fd,int key)
 		key = editorReadKey(fd);
 		if (key == 'd') {
 			editorDelRow(y);
-			if (!E.numrows)
+			if (!E.numrows) {
 				editorInsertRow(0,L"",0);
+			} else if (E.numrows == y) {
+				editorMoveCursor(ARROW_UP);
+			}
 		} else if (key == '$') {
 			deleteRange(y,E.cx,E.row[y].size - E.cx);
 		} else if (key == '0') {
