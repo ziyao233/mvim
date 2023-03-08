@@ -59,6 +59,8 @@
 #include<fcntl.h>
 #include<signal.h>
 
+#include"mvim.conf.h"
+
 typedef enum {
 	COLOR_BLACK	= 0,COLOR_RED,COLOR_GREEN,COLOR_YELLOW,COLOR_BLUE,
 	COLOR_MAGENTA,COLOR_CYAN,COLOR_WHITE
@@ -752,8 +754,8 @@ int editorWidthFrom(int start)
 	erow *row = E.row + E.rowoff + E.cy;
 	for (int i = start;i - start < E.cx;i++) {
 		int t = wcwidth(row->chars[i]);
-		width += t >= 0			? t			:
-			 row->chars[i] == TAB	? 8 - width % 8		:
+		width += t >= 0			? t			    :
+			 row->chars[i] == TAB	? C.tabsize - C.tabsize % 8 :
 						  1;
 	}
 	return width;
@@ -795,9 +797,9 @@ static inline int drawRowAt(int at,int remainSpace,bool write)
 	for (int i = 0,width = 0;i < row->size;i++) {
 		int t = wcwidth(row->chars[i]);
 		// Normal characters, TAB or control charaters
-		t = t >= 0			? t			:
-		    row->chars[i] == TAB	? 8 - width % 8	:
-						  1;
+		t = t >= 0		 ? t				 :
+		    row->chars[i] == TAB ? C.tabsize - width % C.tabsize :
+					   1;
 
 		/*	Wrapping	*/
 		if (width + t > E.screencols) {
@@ -917,12 +919,13 @@ void editorRefreshScreen(bool write)
      */
 	int cx = 0;
 	int filerow = E.rowoff + E.cy;
+	int t = C.tabsize;
 	erow *row = (filerow >= E.numrows) ? NULL : &E.row[filerow];
 	if (row) {
 		for (int i = 0;i < E.cx && i < row->size;i++) {
 			int width = wcwidth(row->chars[i]);
 			width = width >= 0		? width		:
-			        row->chars[i] == TAB	? 8 - cx % 8	:
+			        row->chars[i] == TAB	? t - cx % t	:
 							  1;
 			cursorY += cx + width < E.screencols ? 0 : 1;
 			cx = cx + width < E.screencols	? cx + width	:
@@ -986,9 +989,9 @@ void editorMoveCursor(int key)
 	int cx = 0,width = 0;
 	while (cx < row->size && width <= leftWidth) {
 		int t = wcwidth(row->chars[cx]);
-		width += t >= 0				? t		:
-			 row->chars[cx] == TAB		? 8 - width % 8	:
-							  1;
+		width += t >= 0		       ? t			       :
+			 row->chars[cx] == TAB ? C.tabsize - width % C.tabsize :
+						 1;
 		cx++;
 	}
 	E.cx = cx > 0 ? cx - 1 : 0;

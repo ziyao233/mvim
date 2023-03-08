@@ -24,7 +24,7 @@ FLAG_LD		:=
 
 default: build
 
-%.o: %.c
+%.o: %.c mvim.conf.h
 	@$(ECHO) [C99] $< $@
 	@$(CC) $< -c $(FLAG_CC)
 
