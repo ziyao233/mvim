@@ -998,6 +998,14 @@ void editorMoveCursor(int key)
 
 void editorMoveCursorTo(int y,int x)
 {
+	/*	Do the moving only the position is not on screen	*/
+	if (E.rowBottom + E.rowoff >= y && 
+	    E.rowoff <= y) {
+		E.cy = y - E.rowoff;
+		E.cx = x;
+		return;
+	}
+
 	E.rowoff	= y;
 	E.cy		= 0;
 	E.cx		= x;
