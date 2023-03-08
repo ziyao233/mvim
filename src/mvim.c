@@ -29,8 +29,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define MVIM_STDOUT_BUFFER_SIZE		(64 * 1024)
-
 #ifdef __linux__
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -209,11 +207,11 @@ fatal:
  */
 int enableStdoutBuffer(void)
 {
-	char *buf = malloc(MVIM_STDOUT_BUFFER_SIZE);
+	char *buf = malloc(C.outputBufferSize);
 	if (!buf)
 		return -1;
 
-	setvbuf(stdout,buf,_IOFBF,MVIM_STDOUT_BUFFER_SIZE);
+	setvbuf(stdout,buf,_IOFBF,C.outputBufferSize);
 	return 0;
 }
 
@@ -1362,7 +1360,7 @@ static inline void processKeyVisual(int fd,int key)
 		editorMoveCursorTo(ey,ex);
 		do
 			editorDelChar();
-		while (E.cy >= sy || E.cx != sx);
+		while (E.cy > sy || E.cx != sx);
 		break;
 	default:
 		break;
