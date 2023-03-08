@@ -1022,7 +1022,8 @@ void editorMoveCursorTo(int y,int x)
 	return;
 }
 
-void editorReplaceChar(int y,int x,int new)
+void
+editorReplaceChar(int y,int x,int new)
 {
 	if (E.row[y].size)
 		E.row[y].chars[x] = new;
@@ -1031,7 +1032,8 @@ void editorReplaceChar(int y,int x,int new)
 	return;
 }
 
-static inline void commandModeError(int fd,const char *s)
+static inline void
+commandModeError(int fd, const char *s)
 {
 	enableRawMode(fd);
 	writeString(s);
@@ -1040,46 +1042,82 @@ static inline void commandModeError(int fd,const char *s)
 	return;
 }
 
-static inline void commandMode(int fd)
+static inline int
+isCmd(const char *s, const char *cmd)
+{
+	size_t len = strlen(cmd);
+	return !strncmp(s,cmd,len) && (isspace(s[len] || s[len]) == '\0') ?
+			len : 0;
+}
+
+static Mvim_Conf_Entry *
+getConfEntry(const char *name)
+{
+	for (unsigned int i = 0;
+	     i < sizeof(gConfList) / sizeof(Mvim_Conf_Entry);
+	     i++) {
+		if (!strcmp(name, gConfList[i].name))
+			return gConfList + i;
+	}
+	return NULL;
+}
+
+static inline void
+commandMode(int fd)
 {
 	disableRawMode(fd);
 
 	// Overwrite the status line
-	printf("\x1b[%d;%dH\x1b[0K:",E.screenrows + 1,0);
+	printf("\x1b[%d;%dH\x1b[0K:", E.screenrows + 1,0);
 	fflush(stdout);			// stdout is block-buffered
 
 	char *cmd = NULL;
 	size_t size = 0;
-	ssize_t length = getline(&cmd,&size,stdin);
+	ssize_t length = getline(&cmd, &size, stdin);
 	if (length < 0)
 		goto end;
 	cmd[length - 1] = '\0';
 
-	if (!strcmp(cmd,"q")) {
+	int offset = 0;
+	if (!strcmp(cmd, "q")) {
 		if (E.dirty) {
-			commandModeError(fd,"No write since last change");
+			commandModeError(fd, "No write since last change");
 		} else {
 			exit(0);
 		}
-	} else if (!strcmp(cmd,"q!")) {
+	} else if (!strcmp(cmd, "q!")) {
 		exit(0);
-	} else if (!strcmp(cmd,"w")) {
-		if (E.dirty) {
-			if (editorSave())
-				commandModeError(fd,"Cannot save file");
+	} else if (!strcmp(cmd, "w")) {
+		if (E.dirty && editorSave()) {
+			commandModeError(fd, "Cannot save file");
 		}
-	} else if (!strcmp(cmd,"wq")) {
-		if (E.dirty) {
-			if (editorSave()) {
-				commandModeError(fd,"Cannot save file");
-				goto end;
-			}
+	} else if (!strcmp(cmd, "wq")) {
+		if (E.dirty && editorSave()) {
+			commandModeError(fd, "Cannot save file");
+			goto end;
 		}
 		exit(0);
+	} else if ((offset = isCmd(cmd, "set"))) {
+		char *name = malloc(length);
+		int value = 0;
+		if (sscanf(cmd + offset,"%s %d",name,&value) != 2) {
+			commandModeError(fd, "Wrong usage: set key value");
+			goto freeName;
+		}
+
+		Mvim_Conf_Entry *entry = getConfEntry(name);
+		if (!entry) {
+			commandModeError(fd, "Invalid key.");
+			goto freeName;
+		}
+
+		*(entry->value) = value;
+freeName:
+		free(name);
 	} else if (!*cmd) {
 		goto end;
 	} else {
-		commandModeError(fd,"Unknown command");
+		commandModeError(fd, "Unknown command");
 	}
 
 end:

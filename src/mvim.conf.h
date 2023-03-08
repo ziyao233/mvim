@@ -9,12 +9,23 @@
 #include<stdbool.h>
 #include<stdint.h>
 
+#define ENTRY(name) { #name, &(C.name) }
+
 struct Mvim_Conf {
 	int tabsize;
 } C = {
 	.tabsize	= 8,
 };
 
-
+/*
+ *	DO NOT MODIFY
+ */
+typedef struct {
+	const char *name;
+	int *value;
+} Mvim_Conf_Entry;
+Mvim_Conf_Entry gConfList[] = {
+	ENTRY(tabsize),
+};
 
 #endif	// __MVIM_CONF_H_INC__
