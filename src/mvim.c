@@ -60,8 +60,8 @@
 #include"mvim.conf.h"
 
 typedef enum {
-	COLOR_BLACK	= 0,COLOR_RED,COLOR_GREEN,COLOR_YELLOW,COLOR_BLUE,
-	COLOR_MAGENTA,COLOR_CYAN,COLOR_WHITE
+	COLOR_BLACK	= 0, COLOR_RED, COLOR_GREEN, COLOR_YELLOW, COLOR_BLUE,
+	COLOR_MAGENTA, COLOR_CYAN, COLOR_WHITE
 } Color;
 
 typedef struct {
@@ -82,11 +82,6 @@ typedef struct erow {
 	Char_Attr *attr;	// Character attributes
 } erow;
 
-typedef struct {
-	int rowNum;
-	size_t
-} Record;
-
 static struct editorConfig {
 	int cx,cy;		// Cursor x and y position on screen
 	int rowoff;		// Offset of row displayed.
@@ -96,12 +91,12 @@ static struct editorConfig {
 	int rowBottom;		// Index of the row in the bottom
 	int rawmode;		// Is terminal raw mode enabled?
 	erow *row;		// Rows
-	int dirty;		// File modified but not saved.
+	int version;		// Timestamp
 	char *filename;		// Currently open filename
 	enum {
-		MODE_NORMAL,MODE_INSERT,MODE_VISUAL
+		MODE_NORMAL, MODE_INSERT, MODE_VISUAL
 	} mode;
-	bool isScreenFull;	// The screen is fully used (no '~')
+	int isScreenFull;	// The screen is fully used (no '~')
 	int sx,sy;		// Selected x and y, the beginnning position
 				// of select
 	wchar_t *copyBuffer;
@@ -456,7 +451,6 @@ editorInsertRow(int at, const wchar_t *s, size_t len)
 	E.row[at].idx		= at;
 	editorUpdateRow(E.row + at);
 	E.numrows++;
-	E.dirty++;
 }
 
 void
@@ -499,7 +493,6 @@ editorDelRow(int at)
 	for (int j = at; j < E.numrows - 1; j++)
 		E.row[j].idx++;
 	E.numrows--;
-	E.dirty++;
 	return;
 }
 
@@ -556,7 +549,6 @@ editorRowInsertChar(erow *row, int at, int c)
 	}
 	row->chars[at] = c;
 	editorUpdateRow(row);
-	E.dirty++;
 	return;
 }
 
@@ -569,7 +561,6 @@ editorRowAppendString(erow *row, wchar_t *s, size_t len)
 	wcsncat(row->chars, s, len);
 	row->size += len;
 	editorUpdateRow(row);
-	E.dirty++;
 	return;
 }
 
@@ -583,7 +574,6 @@ editorRowDelChar(erow *row, int at)
 						    (row->size - at));
 	row->size--;
 	editorUpdateRow(row);
-	E.dirty++;
 	return;
 }
 
@@ -603,7 +593,6 @@ editorInsertChar(int c)
 	row = &E.row[filerow];
 	editorRowInsertChar(row, E.cx, c);
 	E.cx++;
-	E.dirty++;
 }
 
 /* Inserting a newline is slightly complex as we have to handle inserting a
@@ -664,7 +653,8 @@ editorDelChar()
         /* Handle the case of column 0, we need to move the current line
          * on the right of the previous one. */
 		int newX = E.cx + E.row[filerow - 1].size;
-		editorRowAppendString(&E.row[filerow - 1], row->chars, row->size);
+		editorRowAppendString(&E.row[filerow - 1], row->chars,
+				      row->size);
 		editorDelRow(filerow);
 		row = NULL;
 		if (E.cy == 0) {
@@ -680,10 +670,6 @@ editorDelChar()
 
 	if (row)
 		editorUpdateRow(row);
-
-	E.dirty++;
-
-	return;
 }
 
 wchar_t *
@@ -717,7 +703,6 @@ editorPaste(wchar_t *s)
 			editorInsertChar(s[i]);
 		}
 	}
-	return;
 }
 
 /* Load the specified program in the editor memory and returns 0 on success
@@ -727,7 +712,7 @@ editorOpen(char *filename)
 {
 	FILE *fp;
 
-	E.dirty = 0;
+	E.version = 0;
 	free(E.filename);
 	size_t fnlen = strlen(filename) + 1;
 	E.filename = malloc(fnlen);
@@ -753,7 +738,7 @@ editorOpen(char *filename)
 	}
 	free(line);
 	fclose(fp);
-	E.dirty = 0;
+	E.version = 0;
 	return 0;
 }
 
@@ -775,7 +760,7 @@ editorSave(void) {
 
 	close(fd);
 	free(buf);
-	E.dirty = 0;
+	E.version= 0;
 	return 0;
 
 writeerr:
@@ -830,7 +815,7 @@ switchAttr(Char_Attr *old, Char_Attr *new)
 }
 
 static inline int
-drawRowAt(int at, int remainSpace, bool write)
+drawRowAt(int at, int remainSpace, int write)
 {
 	erow *row = E.row + at;
 	int line = 0;
@@ -883,7 +868,7 @@ drawRowAt(int at, int remainSpace, bool write)
 /* This function writes the whole screen using VT100 escape characters
  * starting from the logical state of the editor in the global state 'E'. */
 void
-editorRefreshScreen(bool write)
+editorRefreshScreen(int write)
 {
 	writeString("\x1b[?25l");	// Hide cursor.
 	writeString("\x1b[H");		// Go home.
@@ -1074,7 +1059,6 @@ editorReplaceChar(int y, int x, int new)
 {
 	if (E.row[y].size)
 		E.row[y].chars[x] = new;
-	E.dirty++;
 	editorUpdateRow(E.row + y);
 	return;
 }
@@ -1127,7 +1111,7 @@ commandMode(int fd)
 
 	int offset = 0;
 	if (!strcmp(cmd, "q")) {
-		if (E.dirty) {
+		if (E.version) {
 			commandModeError(fd, "No write since last change");
 		} else {
 			exit(0);
@@ -1135,11 +1119,11 @@ commandMode(int fd)
 	} else if (!strcmp(cmd, "q!")) {
 		exit(0);
 	} else if (!strcmp(cmd, "w")) {
-		if (E.dirty && editorSave()) {
+		if (E.version && editorSave()) {
 			commandModeError(fd, "Cannot save file");
 		}
 	} else if (!strcmp(cmd, "wq")) {
-		if (E.dirty && editorSave()) {
+		if (E.version && editorSave()) {
 			commandModeError(fd, "Cannot save file");
 			goto end;
 		}
@@ -1222,6 +1206,7 @@ processKeyNormal(int fd, int key)
 			deleteRange(y, 0, E.cx);
 			E.cx = 0;
 		}
+		E.version++;
 		break;
 	case '$':
 	case END_KEY:
@@ -1236,6 +1221,7 @@ processKeyNormal(int fd, int key)
 		E.mode = MODE_INSERT;
 		editorRefreshScreen(false);
 		editorMoveCursor(ARROW_DOWN);
+		E.version++;
 		break;
 	case 'a':
 		E.mode = MODE_INSERT;
@@ -1279,19 +1265,24 @@ processKeyNormal(int fd, int key)
 		editorMoveCursorTo(E.numrows - 1, 0);
 		break;
 	case 'x':
-		if (E.row[y].size)
+		if (E.row[y].size) {
 			editorRowDelChar(E.row + y, E.cx);
+			E.version++;
+		}
 		break;
 	case 'r':
 		key = editorReadKey(fd);
 		editorReplaceChar(y, E.cx, readWideChar(key));
+		E.version++;
 		break;
 	case ':':
 		commandMode(fd);
 		break;
 	case 'p':
-		if (E.copyBuffer)
+		if (E.copyBuffer) {
 			editorPaste(E.copyBuffer);
+			E.version++;
+		}
 		break;
 	default:
 		break;
@@ -1310,9 +1301,11 @@ processKeyInsert(int fd, int key)
 		break;
 	case ENTER:
 		editorInsertNewline();
+		E.version++;
 		break;
 	case BACKSPACE:
 		editorDelChar();
+		E.version++;
 		break;
 	case ARROW_LEFT:
 		editorMoveCursor(ARROW_LEFT);
@@ -1328,6 +1321,7 @@ processKeyInsert(int fd, int key)
 		break;
 	default:
 		editorInsertChar(readWideChar(key));
+		E.version++;
 		break;
 	}
 	return;
@@ -1406,6 +1400,7 @@ processKeyVisual(int fd, int key)
 		free(E.copyBuffer);
 		E.copyBuffer = editorCopyRange(sx, sy, ex, ey);
 		exitVisualMode(sy, ey);
+		E.version++;
 		break;
 	case 'x':
 	case 'd':	/*	Cut	*/
@@ -1416,6 +1411,7 @@ processKeyVisual(int fd, int key)
 		do
 			editorDelChar();
 		while (E.cy > sy || E.cx != sx);
+		E.version++;
 		break;
 	default:
 		break;
@@ -1440,7 +1436,7 @@ editorProcessKeypress(int fd) {
 
 int
 editorFileWasModified(void) {
-    return E.dirty;
+    return E.version;
 }
 
 void
@@ -1450,7 +1446,7 @@ updateWindowSize(void) {
         perror("Unable to query the screen for size (columns / rows)");
         exit(1);
     }
-    E.screenrows --;		// Get room for status line
+    E.screenrows--;		// Get room for status line
 }
 
 void
@@ -1474,7 +1470,7 @@ initEditor(void)
 	E.rowoff	= 0;
 	E.numrows	= 0;
 	E.row		= NULL;
-	E.dirty		= 0;
+	E.version	= 0;
 	E.filename	= NULL;
 	E.mode		= MODE_NORMAL;
 	E.isScreenFull	= false;
@@ -1498,7 +1494,7 @@ main(int argc, char **argv)
 	/*	Make sure there is at last one row	*/
 	if (!E.numrows) {
 		editorInsertRow(0, L"", 0);
-		E.dirty = 0;
+		E.version = 0;
 	}
 
 	enableRawMode(STDIN_FILENO);
