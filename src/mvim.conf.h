@@ -14,9 +14,11 @@
 struct Mvim_Conf {
 	int tabsize;
 	int outputBufferSize;
+	int historySize;
 } C = {
 	.tabsize		= 8,
 	.outputBufferSize	= 64 * 1024,
+	.historySize		= 64,
 };
 
 /*

@@ -74,7 +74,7 @@ typedef struct {
 } Char_Attr;
 
 /* This structure represents a single line of the file we are editing. */
-typedef struct erow {
+typedef struct {
 	int idx;		// Row index in the file, zero-based.
 	int size;		// Size of the row, excluding the null term.
 	wchar_t *chars;		// Row content.
@@ -82,24 +82,41 @@ typedef struct erow {
 	Char_Attr *attr;	// Character attributes
 } erow;
 
+typedef struct {
+	wchar_t *old, *new;
+	size_t oldLines, newLines;
+	int pos;
+} Change;
+
 static struct editorConfig {
+	/*	Display	Status	*/
 	int cx,cy;		// Cursor x and y position on screen
 	int rowoff;		// Offset of row displayed.
-	int screenrows;		// Number of rows that we can show
-	int screencols;		// Number of cols that we can show
-	int numrows;		// Number of rows
 	int rowBottom;		// Index of the row in the bottom
-	int rawmode;		// Is terminal raw mode enabled?
-	erow *row;		// Rows
-	int version;		// Timestamp
-	char *filename;		// Currently open filename
 	enum {
 		MODE_NORMAL, MODE_INSERT, MODE_VISUAL
 	} mode;
 	int isScreenFull;	// The screen is fully used (no '~')
 	int sx,sy;		// Selected x and y, the beginnning position
 				// of select
+
+	/*	Screen Info	*/
+	int screenrows;		// Number of rows that we can show
+	int screencols;		// Number of cols that we can show
+	int numrows;		// Number of rows
+	int rawmode;		// Is terminal raw mode enabled?
+
+	/*	File Info	*/
+	erow *row;		// Rows
+	int version;		// Timestamp
+	char *filename;		// Currently open filename
+
+	/*	Copy		*/
 	wchar_t *copyBuffer;
+
+	/*	History		*/
+	Change *history;
+	int newest, oldest;
 } E;
 
 static struct editorConfig E;
@@ -115,6 +132,7 @@ enum KEY_ACTION {
 	CTRL_L		= 12,
 	ENTER		= 13,
 	CTRL_Q		= 17,
+	CTRL_R		= 18,
 	CTRL_S		= 19,
 	CTRL_U		= 21,
 	ESC		= 27,
@@ -153,13 +171,21 @@ editorAtExit(void)
 {
 	disableRawMode(STDIN_FILENO);
 
-	for (int i = 0;i < E.numrows;i++) {
+	for (int i = 0; i < E.numrows; i++) {
 		free(E.row[i].chars);
 		free(E.row[i].attr);
 	}
 	free(E.row);
 	free(E.filename);
 	free(E.copyBuffer);
+
+	for (int i = 0; i < C.historySize; i++) {
+		if (E.history[i].new)
+			free(E.history[i].new);
+		if (E.history[i].old)
+			free(E.history[i].old);
+	}
+	free(E.history);
 
 	/*	Reset cursor position	*/
 	printf("\x1b[%d;0H\x1b[0K", E.screenrows + 1);
@@ -639,9 +665,12 @@ fixcursor:
 	return;
 }
 
+void editorStartChange(int sy, int ey);
+void editorCommitChange(int sy, int ey);
+
 /* Delete the char at the current prompt position. */
-void
-editorDelChar()
+static void
+editorDelChar(void)
 {
 	int filerow = E.rowoff + E.cy;
 	erow *row = (filerow >= E.numrows) ? NULL : &E.row[filerow];
@@ -652,6 +681,7 @@ editorDelChar()
 	if (!E.cx) {
         /* Handle the case of column 0, we need to move the current line
          * on the right of the previous one. */
+		editorCommitChange(filerow, filerow);
 		int newX = E.cx + E.row[filerow - 1].size;
 		editorRowAppendString(&E.row[filerow - 1], row->chars,
 				      row->size);
@@ -663,6 +693,7 @@ editorDelChar()
 			E.cy--;
 		}
 		E.cx = newX;
+		editorStartChange(E.cy + E.rowoff, E.cy + E.rowoff - 1);
 	} else {
 		editorRowDelChar(row, E.cx - 1);
 		E.cx--;
@@ -760,7 +791,9 @@ editorSave(void) {
 
 	close(fd);
 	free(buf);
-	E.version= 0;
+	E.version	= 0;
+	E.newest	= 0;
+	E.oldest	= 0;
 	return 0;
 
 writeerr:
@@ -972,6 +1005,78 @@ editorRefreshScreen(int write)
 	return;
 }
 
+/* ========================= Change Tracing ================================  */
+
+void
+editorStartChange(int sy, int ey)
+{
+	Change *this = E.history + (E.version + 1) % C.historySize;
+	if (this->old)
+		free(this->old);
+	if (this->new)
+		free(this->new);
+
+	E.history[(E.version + 1) % C.historySize] = (Change) {
+			.pos		= sy,
+			.oldLines	= ey - sy + 1,
+			.old		= ey < sy ?
+				NULL					:
+				editorCopyRange(0, sy,
+						E.row[ey].size, ey),
+		};
+}
+
+void
+editorCommitChange(int sy, int ey)
+{
+	E.version++;
+	Change *this	= E.history + E.version % C.historySize;
+	this->newLines	= ey - sy + 1;
+	this->new	= ey < sy ?
+		NULL : editorCopyRange(0, sy, E.row[ey].size, ey);
+
+	if (E.oldest + C.historySize == E.newest)
+		E.oldest++;
+	E.newest = E.version;
+}
+
+void editorMoveCursorTo(int y, int x);
+
+/*
+ *	Replace n lines at pos with new
+ */
+void
+editorReplace(int pos, size_t n, wchar_t *new)
+{
+	for (size_t i = 0; i < n; i++)
+		editorDelRow(pos);
+	editorMoveCursorTo(pos, 0);
+	if (new)
+		editorPaste(new);
+}
+
+void
+editorUndoChange(void)
+{
+	if (E.version == E.oldest)
+		return;
+
+	Change *this = E.history + E.version % C.historySize;
+	editorReplace(this->pos, this->newLines, this->old);
+	E.version--;
+}
+
+void
+editorRedoChange(void)
+{
+	if (E.version == E.newest)
+		return;
+
+	Change *this = E.history + (E.version + 1) % C.historySize;
+	editorReplace(this->pos, this->oldLines, this->new);
+	E.version++;
+}
+
 /* ========================= Editor events handling  ======================== */
 
 void
@@ -1057,9 +1162,12 @@ editorMoveCursorTo(int y, int x)
 void
 editorReplaceChar(int y, int x, int new)
 {
-	if (E.row[y].size)
+	if (E.row[y].size) {
+		editorStartChange(y, y);
 		E.row[y].chars[x] = new;
-	editorUpdateRow(E.row + y);
+		editorCommitChange(y, y);
+		editorUpdateRow(E.row + y);
+	}
 	return;
 }
 
@@ -1105,6 +1213,10 @@ commandMode(int fd)
 	char *cmd = NULL;
 	size_t size = 0;
 	ssize_t length = getline(&cmd, &size, stdin);
+	/*
+	 *	cmd will get leaked if exit() is called when "q", "wq" or "q!"
+	 *	is used and the editor exits. It doesn't matter.
+	 */
 	if (length < 0)
 		goto end;
 	cmd[length - 1] = '\0';
@@ -1186,6 +1298,13 @@ deleteRange(int y, int x, int length)
 	return;
 }
 
+static void
+enterInsertMode(int y)
+{
+	E.mode = MODE_INSERT;
+	editorStartChange(y, y);
+}
+
 static inline void
 processKeyNormal(int fd, int key)
 {
@@ -1194,6 +1313,7 @@ processKeyNormal(int fd, int key)
 	case 'd':
 		key = editorReadKey(fd);
 		if (key == 'd') {
+			editorStartChange(y, y);
 			editorDelRow(y);
 			if (!E.numrows) {
 				editorInsertRow(0, L"", 0);
@@ -1201,12 +1321,17 @@ processKeyNormal(int fd, int key)
 				editorMoveCursor(ARROW_UP);
 			}
 		} else if (key == '$') {
+			editorStartChange(y, y);
 			deleteRange(y, E.cx, E.row[y].size - E.cx);
 		} else if (key == '0') {
+			editorStartChange(y, y);
 			deleteRange(y, 0, E.cx);
 			E.cx = 0;
+		} else {
+			break;
 		}
-		E.version++;
+
+		editorCommitChange(y, key == 'd' ? y - 1 : y);
 		break;
 	case '$':
 	case END_KEY:
@@ -1217,18 +1342,19 @@ processKeyNormal(int fd, int key)
 		E.cx = 0;
 		break;
 	case 'o':
+		editorStartChange(y + 1, y);
 		editorInsertRow(y + 1, L"", 0);
-		E.mode = MODE_INSERT;
+		editorCommitChange(y + 1, y + 1);
+		enterInsertMode(y + 1);
 		editorRefreshScreen(false);
 		editorMoveCursor(ARROW_DOWN);
-		E.version++;
 		break;
 	case 'a':
-		E.mode = MODE_INSERT;
+		enterInsertMode(y);
 		editorMoveCursor(ARROW_RIGHT);
 		break;
 	case 'i':
-		E.mode = MODE_INSERT;
+		enterInsertMode(y);
 		break;
 	case 'v':
 		E.mode	= MODE_VISUAL;
@@ -1266,24 +1392,30 @@ processKeyNormal(int fd, int key)
 		break;
 	case 'x':
 		if (E.row[y].size) {
+			editorStartChange(y, y);
 			editorRowDelChar(E.row + y, E.cx);
-			E.version++;
+			editorCommitChange(y, y);
 		}
 		break;
 	case 'r':
 		key = editorReadKey(fd);
 		editorReplaceChar(y, E.cx, readWideChar(key));
-		E.version++;
 		break;
 	case ':':
 		commandMode(fd);
 		break;
 	case 'p':
 		if (E.copyBuffer) {
+			editorStartChange(y, y - 1);
 			editorPaste(E.copyBuffer);
-			E.version++;
+			editorCommitChange(y, E.rowoff + E.cy);
 		}
 		break;
+	case 'u':
+		editorUndoChange();
+		break;
+	case CTRL_R:
+		editorRedoChange();
 	default:
 		break;
 	}
@@ -1294,34 +1426,23 @@ static inline void
 processKeyInsert(int fd, int key)
 {
 	(void)fd;
+	int y = E.rowoff + E.cy;
 	switch (key) {
 	case ESC:
 		editorMoveCursor(ARROW_LEFT);
 		E.mode = MODE_NORMAL;
+		editorCommitChange(y, y);
 		break;
 	case ENTER:
+		editorCommitChange(y, y);
 		editorInsertNewline();
-		E.version++;
+		editorStartChange(y + 1, y);
 		break;
 	case BACKSPACE:
 		editorDelChar();
-		E.version++;
-		break;
-	case ARROW_LEFT:
-		editorMoveCursor(ARROW_LEFT);
-		break;
-	case ARROW_RIGHT:
-		editorMoveCursor(ARROW_RIGHT);
-		break;
-	case ARROW_UP:
-		editorMoveCursor(ARROW_UP);
-		break;
-	case ARROW_DOWN:
-		editorMoveCursor(ARROW_DOWN);
 		break;
 	default:
 		editorInsertChar(readWideChar(key));
-		E.version++;
 		break;
 	}
 	return;
@@ -1335,7 +1456,22 @@ exitVisualMode(int sy, int ey)
 	return;
 }
 
-static inline void
+static void
+visualCut(int sx, int sy, int ex, int ey)
+{
+	if (sy == ey) {
+		deleteRange(sy, sx, ex - sx + 1);
+		return;
+	}
+
+	deleteRange(sy, sx, E.row[sy].size - E.sx);
+	deleteRange(ey, ex, ex + 1);
+
+	for (int i = sy + 1; i < ey - 1; i++)
+		editorDelRow(i);
+}
+
+static void
 processKeyVisual(int fd, int key)
 {
 	int y = E.rowoff + E.cy;
@@ -1400,18 +1536,20 @@ processKeyVisual(int fd, int key)
 		free(E.copyBuffer);
 		E.copyBuffer = editorCopyRange(sx, sy, ex, ey);
 		exitVisualMode(sy, ey);
-		E.version++;
 		break;
 	case 'x':
 	case 'd':	/*	Cut	*/
 		free(E.copyBuffer);
+
+		editorStartChange(sy, ey);
+		editorCommitChange(sy, sy - 1);
+
 		E.copyBuffer = editorCopyRange(sx, sy, ex, ey);
+
 		exitVisualMode(sy, ey);
-		editorMoveCursorTo(ey, ex);
-		do
-			editorDelChar();
-		while (E.cy > sy || E.cx != sx);
-		E.version++;
+
+		editorMoveCursorTo(sy, sx);
+		visualCut(sx, sy, ex, ey);
 		break;
 	default:
 		break;
@@ -1468,13 +1606,21 @@ initEditor(void)
 	E.cy		= 0;
 	E.rowBottom	= 0;
 	E.rowoff	= 0;
-	E.numrows	= 0;
-	E.row		= NULL;
-	E.version	= 0;
-	E.filename	= NULL;
 	E.mode		= MODE_NORMAL;
 	E.isScreenFull	= false;
+
+	E.numrows	= 0;
+	E.row		= NULL;
+	E.filename	= NULL;
+
+	E.version	= 0;
+	E.newest	= 0;
+	E.oldest	= 0;
+	E.history	= malloc(sizeof(Change) * C.historySize);
+	memset(E.history, 0, sizeof(Change) * C.historySize);
+
 	E.copyBuffer	= NULL;
+
 	updateWindowSize();
 	signal(SIGWINCH, handleSigWinCh);
 }
