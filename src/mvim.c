@@ -403,7 +403,7 @@ getSelectedRange(int *sx, int *sy, int *ex, int *ey)
 	return;
 }
 
-static inline void
+static void
 renderSelect(erow *row, int y)
 {
 	if (!row->size)
@@ -419,6 +419,19 @@ renderSelect(erow *row, int y)
 		row->attr[i].reverse = !row->attr[i].reverse;
 
 	return;
+}
+
+static void
+renderTrailingSpace(erow *row)
+{
+	if (!row->size)
+		return;
+
+	for (int i = row->size - 1; isspace(row->chars[i]); i--)
+		row->attr[i] = (Char_Attr) {
+						.reverse	= 1,
+						.color		= COLOR_RED,
+					    };
 }
 
 /*
@@ -441,6 +454,9 @@ editorUpdateRow(erow *row)
 	int y = row - E.row;
 	if (E.mode == MODE_VISUAL)
 		renderSelect(row, y);
+
+	if (C.highlightTrailingSpace)
+		renderTrailingSpace(row);
 
 	return;
 }
@@ -1257,6 +1273,8 @@ commandMode(int fd)
 		*(entry->value) = value;
 freeName:
 		free(name);
+		for (int i = 0; i < E.numrows; i++)
+			editorUpdateRow(E.row + i);
 	} else if (!*cmd) {
 		goto end;
 	} else {

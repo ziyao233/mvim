@@ -15,10 +15,12 @@ struct Mvim_Conf {
 	int tabsize;
 	int outputBufferSize;
 	int historySize;
+	int highlightTrailingSpace;
 } C = {
 	.tabsize		= 8,
 	.outputBufferSize	= 64 * 1024,
 	.historySize		= 64,
+	.highlightTrailingSpace	= 1,
 };
 
 /*
@@ -30,6 +32,7 @@ typedef struct {
 } Mvim_Conf_Entry;
 Mvim_Conf_Entry gConfList[] = {
 	ENTRY(tabsize),
+	ENTRY(highlightTrailingSpace),
 };
 
 #endif	// __MVIM_CONF_H_INC__

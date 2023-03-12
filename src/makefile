@@ -5,22 +5,22 @@
 # Copyright(C) 2022-2023 Ziyao. All rights reserved.
 
 # Tools
-CC		:= c99
-INSTALL		:= install
-REMOVE		:= rm
-ECHO		:= echo
-LD		:= c99
+CC		= c99
+INSTALL		= install
+REMOVE		= rm
+ECHO		= echo
+LD		= c99
 
 # Directories
-DIR_INSTALL	:= /usr/local/bin
+DIR_INSTALL	= /usr/local/bin
 
 # Files
 FILE_OBJS	:= mvim.o
 FILE_OUTPUT	:= mvim
 
 # Flags
-FLAG_CC		:= -O0 -Wextra -Werror -Wall -g -pedantic
-FLAG_LD		:=
+FLAG_CC		= -O0 -Wextra -Werror -Wall -g -pedantic
+FLAG_LD		=
 
 default: build
 
