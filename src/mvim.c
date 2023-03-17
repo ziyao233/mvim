@@ -1061,7 +1061,7 @@ void editorMoveCursorTo(int y, int x);
 /*
  *	Replace n lines at pos with new
  */
-void
+static void
 editorReplace(int pos, size_t n, wchar_t *new)
 {
 	for (size_t i = 0; i < n; i++)
@@ -1071,7 +1071,7 @@ editorReplace(int pos, size_t n, wchar_t *new)
 		editorPaste(new);
 }
 
-void
+static void
 editorUndoChange(void)
 {
 	if (E.version == E.oldest)
@@ -1082,7 +1082,7 @@ editorUndoChange(void)
 	E.version--;
 }
 
-void
+static void
 editorRedoChange(void)
 {
 	if (E.version == E.newest)
@@ -1477,13 +1477,26 @@ exitVisualMode(int sy, int ey)
 static void
 visualCut(int sx, int sy, int ex, int ey)
 {
+	int li = E.row[ey].size - 1;		// Last index of the last line
+	/*	One row only	*/
 	if (sy == ey) {
-		deleteRange(sy, sx, ex - sx + 1);
+		if (!sx && ex == li)
+			editorDelRow(sy);
+		else
+			deleteRange(sy, sx, ex - sx + 1);
 		return;
 	}
 
-	deleteRange(sy, sx, E.row[sy].size - E.sx);
-	deleteRange(ey, ex, ex + 1);
+	/*	The first/last line is fully selected, delete it	*/
+	if (ex == li)
+		editorDelRow(ey);
+	else
+		deleteRange(ey, 0, ex + 1);
+
+	if (sx)
+		deleteRange(sy, sx, E.row[sy].size - E.sx);
+	else
+		editorDelRow(sy);
 
 	for (int i = sy + 1; i < ey - 1; i++)
 		editorDelRow(i);
@@ -1560,7 +1573,8 @@ processKeyVisual(int fd, int key)
 		free(E.copyBuffer);
 
 		editorStartChange(sy, ey);
-		editorCommitChange(sy, sy - 1);
+		editorCommitChange(sy, sy + (sx == 0) +
+				       (ex == E.row[ey].size - 1));
 
 		E.copyBuffer = editorCopyRange(sx, sy, ex, ey);
 
