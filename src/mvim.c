@@ -97,7 +97,7 @@ static struct editorConfig {
 		MODE_NORMAL, MODE_INSERT, MODE_VISUAL
 	} mode;
 	int isScreenFull;	// The screen is fully used (no '~')
-	int sx,sy;		// Selected x and y, the beginnning position
+	int sx, sy;		// Selected x and y, the beginnning position
 				// of select
 
 	/*	Screen Info	*/
@@ -117,6 +117,10 @@ static struct editorConfig {
 	/*	History		*/
 	Change *history;
 	int newest, oldest;
+
+	/*	Search		*/
+	wchar_t *keyword;
+	int lastMatchX, lastMatchY;
 } E;
 
 static struct editorConfig E;
@@ -194,7 +198,7 @@ editorAtExit(void)
 
 /* Raw mode: 1960 magic shit. */
 int
-enableRawMode(int fd) {
+enableRawMode(void) {
 	struct termios raw;
 
 	if (E.rawmode)
@@ -202,7 +206,7 @@ enableRawMode(int fd) {
 	if (!isatty(STDIN_FILENO))
 		goto fatal;
 
-	if (tcgetattr(fd, &orig_termios) == -1)
+	if (tcgetattr(STDIN_FILENO, &orig_termios) == -1)
 		goto fatal;
 
 	raw = orig_termios;  /* modify the original mode */
@@ -221,7 +225,7 @@ enableRawMode(int fd) {
 	raw.c_cc[VTIME] = 1; /* 100 ms timeout (unit is tens of second). */
 
     /* put terminal in raw mode after flushing */
-	if (tcsetattr(fd, TCSAFLUSH, &raw) < 0)
+	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) < 0)
 		goto fatal;
 	E.rawmode = 1;
 	return 0;
@@ -1187,13 +1191,24 @@ editorReplaceChar(int y, int x, int new)
 	return;
 }
 
-static inline void
-commandModeError(int fd, const char *s)
+static void
+enterRawMode(char promot)
 {
-	enableRawMode(fd);
+	disableRawMode(STDOUT_FILENO);
+
+	// Overwrite the status line
+	printf("\x1b[%d;%dH\x1b[0K%c", E.screenrows + 1, 0, promot);
+	fflush(stdout);			// stdout is block-buffered
+	return;
+}
+
+static void
+rawModeError(const char *s)
+{
+	enableRawMode();
 	writeString(s);
 	fflush(stdout);
-	editorReadKey(fd);
+	editorReadKey(STDOUT_FILENO);
 	return;
 }
 
@@ -1218,13 +1233,9 @@ getConfEntry(const char *name)
 }
 
 static inline void
-commandMode(int fd)
+commandMode(void)
 {
-	disableRawMode(fd);
-
-	// Overwrite the status line
-	printf("\x1b[%d;%dH\x1b[0K:", E.screenrows + 1,0);
-	fflush(stdout);			// stdout is block-buffered
+	enterRawMode(':');
 
 	char *cmd = NULL;
 	size_t size = 0;
@@ -1240,7 +1251,7 @@ commandMode(int fd)
 	int offset = 0;
 	if (!strcmp(cmd, "q")) {
 		if (E.version) {
-			commandModeError(fd, "No write since last change");
+			rawModeError("No write since last change");
 		} else {
 			exit(0);
 		}
@@ -1248,11 +1259,11 @@ commandMode(int fd)
 		exit(0);
 	} else if (!strcmp(cmd, "w")) {
 		if (E.version && editorSave()) {
-			commandModeError(fd, "Cannot save file");
+			rawModeError("Cannot save file");
 		}
 	} else if (!strcmp(cmd, "wq")) {
 		if (E.version && editorSave()) {
-			commandModeError(fd, "Cannot save file");
+			rawModeError("Cannot save file");
 			goto end;
 		}
 		exit(0);
@@ -1260,13 +1271,13 @@ commandMode(int fd)
 		char *name = malloc(length);
 		int value = 0;
 		if (sscanf(cmd + offset,"%s %d",name,&value) != 2) {
-			commandModeError(fd, "Wrong usage: set key value");
+			rawModeError("Wrong usage: set key value");
 			goto freeName;
 		}
 
 		Mvim_Conf_Entry *entry = getConfEntry(name);
 		if (!entry) {
-			commandModeError(fd, "Invalid key.");
+			rawModeError("Invalid key.");
 			goto freeName;
 		}
 
@@ -1278,13 +1289,13 @@ freeName:
 	} else if (!*cmd) {
 		goto end;
 	} else {
-		commandModeError(fd, "Unknown command");
+		rawModeError("Unknown command");
 	}
 
 end:
 	free(cmd);
 
-	enableRawMode(fd);
+	enableRawMode();
 	return;
 }
 
@@ -1323,7 +1334,77 @@ enterInsertMode(int y)
 	editorStartChange(y, y);
 }
 
-static inline void
+static void 
+searchFor(void)
+{
+	int y = 0;
+	wchar_t *p = NULL;
+
+	wchar_t *keyword = E.keyword;
+	if (keyword[0] == L'^' && keyword[1] != L'^') {
+		keyword++;
+		for (y = 1; y <= E.numrows; y++) {
+			erow *row = E.row + (E.rowoff + E.cy + y) % E.numrows;
+			if (!wcsncmp(row->chars, keyword,
+				     wcslen(keyword))) {
+				p = row->chars;
+				break;
+			}
+		}
+	} else {
+		if (wcsncmp(E.keyword, L"^^", 2))
+			keyword++;
+		for (y = 0; y <= E.numrows; y++) {
+			p = wcsstr(E.row[(E.rowoff + E.cy + y) %
+						E.numrows].chars +
+				   !y * E.cx,
+				   E.keyword);
+			if (p)
+				break;
+		}
+	}
+
+	if (p) {
+		enableRawMode();
+		y = (E.rowoff + E.cy + y) % E.numrows;
+		editorMoveCursorTo(y, p - E.row[y].chars + wcslen(keyword));
+	} else {
+		rawModeError("Cannot find the keyword.");
+		enableRawMode();
+	}
+
+	return;
+}
+
+static void
+searchMode(void)
+{
+	enterRawMode('/');
+
+	char *keyword = NULL;
+	size_t size = 0;
+	ssize_t length = getline(&keyword, &size, stdin);
+	keyword[length - 1] = '\0';
+
+	if (strlen(keyword) && !(strlen(keyword) == 1 && keyword[0] == '^')) {
+		if (E.keyword)
+			free(E.keyword);
+
+		size_t length = mbstowcs(NULL, keyword, 0) + 1;
+		wchar_t *wKeyword = malloc(length * sizeof(wchar_t));
+		mbstowcs(wKeyword, keyword, length); 
+		E.keyword = wKeyword;
+
+		searchFor();
+	} else {
+		free(keyword);
+		enableRawMode();
+	}
+
+	return;
+}
+
+static void
 processKeyNormal(int fd, int key)
 {
 	int y = E.cy + E.rowoff;
@@ -1420,7 +1501,7 @@ processKeyNormal(int fd, int key)
 		editorReplaceChar(y, E.cx, readWideChar(key));
 		break;
 	case ':':
-		commandMode(fd);
+		commandMode();
 		break;
 	case 'p':
 		if (E.copyBuffer) {
@@ -1434,6 +1515,14 @@ processKeyNormal(int fd, int key)
 		break;
 	case CTRL_R:
 		editorRedoChange();
+		break;
+	case '/':
+		searchMode();
+		break;
+	case 'n':
+		enterRawMode('\0');
+		searchFor();
+		break;
 	default:
 		break;
 	}
@@ -1653,6 +1742,10 @@ initEditor(void)
 
 	E.copyBuffer	= NULL;
 
+	E.keyword	= NULL;
+	E.lastMatchX	= -1;
+	E.lastMatchY	= -1;
+
 	updateWindowSize();
 	signal(SIGWINCH, handleSigWinCh);
 }
@@ -1675,7 +1768,7 @@ main(int argc, char **argv)
 		E.version = 0;
 	}
 
-	enableRawMode(STDIN_FILENO);
+	enableRawMode();
 	atexit(editorAtExit);
 	while(1) {
 		editorRefreshScreen(true);
