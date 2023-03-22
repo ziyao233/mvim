@@ -1,8 +1,8 @@
 # mVim
-# File:/src/makefile
-# Date:2023.01.03
+# File: /src/makefile
+# Date: 2023.03.22
 # By 2-BSD License.
-# Copyright(C) 2022-2023 Ziyao. All rights reserved.
+# Copyright(C) 2022-2023 Ziyao.
 
 # Tools
 CC		= c99
@@ -12,7 +12,8 @@ ECHO		= echo
 LD		= c99
 
 # Directories
-DIR_INSTALL	= /usr/local/bin
+DIR_INSTALL	= /usr/local
+DIR_BIN		= $(DIR_INSTALL)/bin
 
 # Files
 FILE_OBJS	:= mvim.o
@@ -48,4 +49,4 @@ disbuild:
 
 install: build
 	@$(ECHO) [INSTALL] $(FILE_OUTPUT) $(DIR_INSTALL)
-	@$(INSTALL) -m0755 -D -p $(FILE_OUTPUT) $(DIR_INSTALL)
+	@$(INSTALL) -m0755 -D -p $(FILE_OUTPUT) $(DIR_BIN)

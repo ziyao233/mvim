@@ -1,5 +1,5 @@
-Syntax highlight
-Line number
-Jump to a line
+Line Number
+Scroll by (half) page
+Autoindent
 Fix that the cursor position is wrong when a line with wide characters is
 	auto-wrapped

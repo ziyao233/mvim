@@ -1289,6 +1289,17 @@ getConfEntry(const char *name)
 	return NULL;
 }
 
+static int
+isNumber(const char *p)
+{
+	while (*p) {
+		if (!isdigit(*p))
+			return 0;
+		p++;
+	}
+	return 1;
+}
+
 static inline void
 commandMode(void)
 {
@@ -1343,6 +1354,12 @@ freeName:
 		free(name);
 		for (int i = 0; i < E.numrows; i++)
 			editorUpdateRow(E.row + i);
+	} else if (isNumber(cmd)) {
+		int line = atoi(cmd);
+		if (line > 0 && line < E.numrows)
+			editorMoveCursorTo(line - 1, 0);
+		else
+			rawModeError("Out of range.");
 	} else if (!*cmd) {
 		goto end;
 	} else {
