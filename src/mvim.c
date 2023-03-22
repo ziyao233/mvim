@@ -65,6 +65,13 @@ typedef enum {
 } Color;
 
 typedef struct {
+	char *suffix;
+	wchar_t **keywords;
+} Keyword_Class;
+
+#include"keywords.h"
+
+typedef struct {
 	unsigned int unused	: 1;	// To simplify drawRowAt()
 	unsigned int bold	: 1;	// [1m
 	unsigned int italic	: 1;	// [3m
@@ -121,6 +128,9 @@ static struct editorConfig {
 	/*	Search		*/
 	wchar_t *keyword;
 	int lastMatchX, lastMatchY;
+
+	/*	Keyword Highlight	*/
+	wchar_t **keywords;
 } E;
 
 static struct editorConfig E;
@@ -438,6 +448,36 @@ renderTrailingSpace(erow *row)
 					    };
 }
 
+static inline int
+isSeperator(wchar_t *p)
+{
+	return !iswalpha(*p) && *p != '_' && *p != '-';
+}
+
+static void
+renderKeywords(erow *row)
+{
+	if (!row->size)
+		return;
+
+	for (wchar_t **keyword = E.keywords; *keyword; keyword++) {
+		size_t len = wcslen(*keyword);
+		for (wchar_t *p = wcsstr(row->chars, *keyword); p;
+		     p = wcsstr(p, *keyword)) {
+		     	if ((p != row->chars && !isSeperator(p - 1)) ||
+			    !isSeperator(p + len)) {
+				p += len;
+				continue;
+			}
+			for (size_t i = 0; i < len; i++)
+				row->attr[p - row->chars + i].color = 
+					C.highlightKeywordColor;
+			p += len;
+		}
+	}
+	return;
+}
+
 /*
  *	Render character attributes
  */
@@ -456,6 +496,10 @@ editorUpdateRow(erow *row)
 	}
 
 	int y = row - E.row;
+
+	if (E.keywords)
+		renderKeywords(row);
+
 	if (E.mode == MODE_VISUAL)
 		renderSelect(row, y);
 
@@ -765,9 +809,18 @@ editorOpen(char *filename)
 
 	E.version = 0;
 	free(E.filename);
-	size_t fnlen = strlen(filename) + 1;
-	E.filename = malloc(fnlen);
-	memcpy(E.filename, filename, fnlen);
+	size_t fnlen = strlen(filename);
+	E.filename = strdup(filename);
+
+	const char *suffix = filename + fnlen;
+	while (suffix > filename && *suffix != '.')
+		suffix--;
+	for (Keyword_Class *p = K; p->suffix; p++) {
+		if (!strcmp(p->suffix, suffix)) {
+			E.keywords = p->keywords;
+			break;
+		}
+	}
 
 	fp = fopen(filename, "r");
 	if (!fp) {
@@ -790,6 +843,10 @@ editorOpen(char *filename)
 	free(line);
 	fclose(fp);
 	E.version = 0;
+
+
+	
+	
 	return 0;
 }
 
@@ -1745,6 +1802,8 @@ initEditor(void)
 	E.keyword	= NULL;
 	E.lastMatchX	= -1;
 	E.lastMatchY	= -1;
+
+	E.keywords	= NULL;
 
 	updateWindowSize();
 	signal(SIGWINCH, handleSigWinCh);

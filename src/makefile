@@ -25,7 +25,11 @@ FLAG_LD		=
 default: build
 
 %.o: %.c mvim.conf.h
-	@$(ECHO) [C99] $< $@
+	@$(ECHO) [CC] $< $@
+	@$(CC) $< -c $(FLAG_CC)
+
+mvim.o: mvim.c mvim.conf.h keywords.h
+	@$(ECHO) [CC] $< $@
 	@$(CC) $< -c $(FLAG_CC)
 
 build: $(FILE_OBJS)
