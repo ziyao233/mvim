@@ -141,7 +141,7 @@ enum KEY_ACTION {
 	CTRL_C		= 3,
 	CTRL_D		= 4,
 	CTRL_F		= 6,
-	CTRL_H		= 8,
+	CTRL_BACKSPACE	= 8,
 	TAB		= 9,
 	CTRL_L		= 12,
 	ENTER		= 13,
@@ -1536,6 +1536,7 @@ processKeyNormal(int fd, int key)
 		break;
 	case 'h':
 	case ARROW_LEFT:
+	case CTRL_BACKSPACE:
 	case BACKSPACE:
 		editorMoveCursor(ARROW_LEFT);
 		break;
@@ -1619,6 +1620,7 @@ processKeyInsert(int fd, int key)
 		editorInsertNewline();
 		editorStartChange(y + 1, y);
 		break;
+	case CTRL_BACKSPACE:
 	case BACKSPACE:
 		editorDelChar();
 		break;
