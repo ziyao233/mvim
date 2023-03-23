@@ -470,7 +470,7 @@ renderKeywords(erow *row)
 				continue;
 			}
 			for (size_t i = 0; i < len; i++)
-				row->attr[p - row->chars + i].color = 
+				row->attr[p - row->chars + i].color =
 					C.highlightKeywordColor;
 			p += len;
 		}
