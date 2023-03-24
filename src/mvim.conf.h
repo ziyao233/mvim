@@ -17,12 +17,14 @@ struct Mvim_Conf {
 	int historySize;
 	int highlightTrailingSpace;
 	int highlightKeywordColor;
+	int autoIndent;
 } C = {
 	.tabsize		= 8,
 	.outputBufferSize	= 64 * 1024,
 	.historySize		= 64,
 	.highlightTrailingSpace	= 1,
 	.highlightKeywordColor	= 2,
+	.autoIndent		= 1,
 };
 
 /*
@@ -36,6 +38,7 @@ Mvim_Conf_Entry gConfList[] = {
 	ENTRY(tabsize),
 	ENTRY(highlightTrailingSpace),
 	ENTRY(highlightKeywordColor),
+	ENTRY(autoIndent),
 };
 
 #undef ENTRY

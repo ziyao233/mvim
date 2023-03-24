@@ -1478,6 +1478,25 @@ searchMode(void)
 	return;
 }
 
+void
+editorAutoIndent(void)
+{
+	int width = 0;
+	for (wchar_t *p = E.row[E.rowoff + E.cy - 1].chars;
+	     iswspace(*p);
+	     p++) {
+		width += *p == TAB ? 8 : 1;	// FIXME: wider space?
+	}
+
+	while (width >= C.tabsize) {
+		editorInsertChar(L'\t');
+		width -= C.tabsize;
+	}
+	for (; width; width--)
+		editorInsertChar(L' ');
+	return;
+}
+
 static void
 processKeyNormal(int fd, int key)
 {
@@ -1517,10 +1536,11 @@ processKeyNormal(int fd, int key)
 	case 'o':
 		editorStartChange(y + 1, y);
 		editorInsertRow(y + 1, L"", 0);
-		editorCommitChange(y + 1, y + 1);
 		enterInsertMode(y + 1);
 		editorRefreshScreen(false);
 		editorMoveCursor(ARROW_DOWN);
+		editorAutoIndent();
+		editorCommitChange(y + 1, y + 1);
 		break;
 	case 'a':
 		enterInsertMode(y);
@@ -1618,6 +1638,7 @@ processKeyInsert(int fd, int key)
 	case ENTER:
 		editorCommitChange(y, y);
 		editorInsertNewline();
+		editorAutoIndent();
 		editorStartChange(y + 1, y);
 		break;
 	case CTRL_BACKSPACE:
