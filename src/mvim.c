@@ -1496,6 +1496,9 @@ searchMode(void)
 void
 editorAutoIndent(void)
 {
+	if (!C.autoIndent)
+		return;
+
 	int width = 0;
 	for (wchar_t *p = E.row[E.rowoff + E.cy - 1].chars;
 	     iswspace(*p);
