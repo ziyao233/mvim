@@ -543,18 +543,33 @@ editorInsertRow(int at, const wchar_t *s, size_t len)
 	E.numrows++;
 }
 
+static
+wchar_t *convertToWideCharFallback(const char *mbs)
+{
+	wchar_t *s = malloc(sizeof(wchar_t) * (strlen(mbs) + 1));
+	size_t i = 0;
+	for (; i < strlen(mbs); i++)
+		s[i] = mbs[i] & 0x80 ? mbs[i] : L'?';
+
+	s[i] = L'\0';
+	return s;
+}
+
 void
 editorInsertRowMb(int at, const char *mbs)
 {
 	size_t charNum = mbstowcs(NULL, mbs, 0);
+	wchar_t *s;
 	if (charNum == (size_t)(-1)) {
-		perror("Invalid multibyte text");
-		exit(-1);
+		s = convertToWideCharFallback(mbs);
+		charNum = wcslen(s);
+	} else {
+		s = malloc(sizeof(wchar_t) * (charNum + 1));
+		mbstowcs(s, mbs, charNum + 1);
 	}
-	wchar_t *s = malloc(sizeof(wchar_t) * (charNum + 1));
-	mbstowcs(s, mbs, charNum + 1);
 	editorInsertRow(at, s, charNum);
 	free(s);
+	return;
 }
 
 /* Free row's heap allocated stuff. */
