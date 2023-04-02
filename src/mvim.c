@@ -149,6 +149,7 @@ enum KEY_ACTION {
 	CTRL_R		= 18,
 	CTRL_S		= 19,
 	CTRL_U		= 21,
+	CTRL_Z		= 26,
 	ESC		= 27,
 	BACKSPACE	= 127,
 /*
@@ -171,10 +172,10 @@ enum KEY_ACTION {
 static struct termios orig_termios; /* In order to restore at exit.*/
 
 void
-disableRawMode(int fd) {
-	/* Don't even check the return value as it's too late. */
+disableRawMode(void) {
 	if (E.rawmode) {
-		tcsetattr(fd, TCSAFLUSH, &orig_termios);
+		tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
+		tcflush(STDIN_FILENO, TCIOFLUSH);
 		E.rawmode = 0;
 	}
 }
@@ -183,7 +184,7 @@ disableRawMode(int fd) {
 void
 editorAtExit(void)
 {
-	disableRawMode(STDIN_FILENO);
+	disableRawMode();
 
 	for (int i = 0; i < E.numrows; i++) {
 		free(E.row[i].chars);
@@ -235,10 +236,14 @@ enableRawMode(void) {
 	raw.c_cc[VTIME] = 1; /* 100 ms timeout (unit is tens of second). */
 
     /* put terminal in raw mode after flushing */
-	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) < 0)
+	if (tcsetattr(STDIN_FILENO, TCSANOW, &raw) < 0)
+		goto fatal;
+
+	if (tcflush(STDIN_FILENO, TCIOFLUSH))
 		goto fatal;
 	E.rawmode = 1;
 	return 0;
+
 
 fatal:
 	errno = ENOTTY;
@@ -1264,9 +1269,9 @@ editorReplaceChar(int y, int x, int new)
 }
 
 static void
-enterRawMode(char promot)
+exitRawMode(char promot)
 {
-	disableRawMode(STDOUT_FILENO);
+	disableRawMode();
 
 	// Overwrite the status line
 	printf("\x1b[%d;%dH\x1b[0K%c", E.screenrows + 1, 0, promot);
@@ -1275,7 +1280,7 @@ enterRawMode(char promot)
 }
 
 static void
-rawModeError(const char *s)
+normalModeError(const char *s)
 {
 	enableRawMode();
 	writeString(s);
@@ -1318,7 +1323,7 @@ isNumber(const char *p)
 static inline void
 commandMode(void)
 {
-	enterRawMode(':');
+	exitRawMode(':');
 
 	char *cmd = NULL;
 	size_t size = 0;
@@ -1334,7 +1339,7 @@ commandMode(void)
 	int offset = 0;
 	if (!strcmp(cmd, "q")) {
 		if (E.version) {
-			rawModeError("No write since last change");
+			normalModeError("No write since last change");
 		} else {
 			exit(0);
 		}
@@ -1342,11 +1347,11 @@ commandMode(void)
 		exit(0);
 	} else if (!strcmp(cmd, "w")) {
 		if (E.version && editorSave()) {
-			rawModeError("Cannot save file");
+			normalModeError("Cannot save file");
 		}
 	} else if (!strcmp(cmd, "wq")) {
 		if (E.version && editorSave()) {
-			rawModeError("Cannot save file");
+			normalModeError("Cannot save file");
 			goto end;
 		}
 		exit(0);
@@ -1354,13 +1359,13 @@ commandMode(void)
 		char *name = malloc(length);
 		int value = 0;
 		if (sscanf(cmd + offset,"%s %d",name,&value) != 2) {
-			rawModeError("Wrong usage: set key value");
+			normalModeError("Wrong usage: set key value");
 			goto freeName;
 		}
 
 		Mvim_Conf_Entry *entry = getConfEntry(name);
 		if (!entry) {
-			rawModeError("Invalid key.");
+			normalModeError("Invalid key.");
 			goto freeName;
 		}
 
@@ -1374,11 +1379,11 @@ freeName:
 		if (line > 0 && line < E.numrows)
 			editorMoveCursorTo(line - 1, 0);
 		else
-			rawModeError("Out of range.");
+			normalModeError("Out of range.");
 	} else if (!*cmd) {
 		goto end;
 	} else {
-		rawModeError("Unknown command");
+		normalModeError("Unknown command");
 	}
 
 end:
@@ -1458,7 +1463,7 @@ searchFor(void)
 		y = (E.rowoff + E.cy + y) % E.numrows;
 		editorMoveCursorTo(y, p - E.row[y].chars + wcslen(keyword));
 	} else {
-		rawModeError("Cannot find the keyword.");
+		normalModeError("Cannot find the keyword.");
 		enableRawMode();
 	}
 
@@ -1468,7 +1473,7 @@ searchFor(void)
 static void
 searchMode(void)
 {
-	enterRawMode('/');
+	exitRawMode('/');
 
 	char *keyword = NULL;
 	size_t size = 0;
@@ -1633,8 +1638,13 @@ processKeyNormal(int fd, int key)
 		searchMode();
 		break;
 	case 'n':
-		enterRawMode('\0');
+		exitRawMode('\0');
 		searchFor();
+		break;
+	case CTRL_Z:
+		exitRawMode('\0');
+		raise(SIGSTOP);
+		enableRawMode();
 		break;
 	default:
 		break;
@@ -1871,8 +1881,8 @@ int
 main(int argc, char **argv)
 {
 	if (argc != 2) {
-		fprintf(stderr, "Usage: mvim <filename>\n");
-		exit(1);
+		fprintf(stderr, "Usage: %s <filename>\n", argv[0]);
+		return -1;
 	}
 
 	setlocale(LC_ALL, "");

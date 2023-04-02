@@ -20,7 +20,7 @@ wchar_t *__luaKeywords[] = {
 wchar_t *__shellKeywords[] = {
 	L"if", L"then", L"fi", L"exit", L"case", L"break", L"test",
 	L"for", L"do", L"done", L"in", L"while", L"return", L"elif",
-	L"else", NULL
+	L"else", L"esac", NULL
 };
 
 /*
