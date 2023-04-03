@@ -232,8 +232,8 @@ enableRawMode(void) {
      * no signal chars (^Z,^C) */
 	raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
     /* control chars - set return condition: min number of bytes and timer. */
-	raw.c_cc[VMIN] = 0; /* Return each byte, or zero for timeout. */
-	raw.c_cc[VTIME] = 1; /* 100 ms timeout (unit is tens of second). */
+	raw.c_cc[VMIN] = 1; /* Return each byte, or zero for timeout. */
+	raw.c_cc[VTIME] = 0;
 
     /* put terminal in raw mode after flushing */
 	if (tcsetattr(STDIN_FILENO, TCSANOW, &raw) < 0)
@@ -864,9 +864,6 @@ editorOpen(char *filename)
 	fclose(fp);
 	E.version = 0;
 
-
-	
-	
 	return 0;
 }
 
@@ -1236,7 +1233,7 @@ void
 editorMoveCursorTo(int y, int x)
 {
 	/*	Do the moving only the position is not on screen	*/
-	if (E.rowBottom + E.rowoff >= y && 
+	if (E.rowBottom + E.rowoff >= y &&
 	    E.rowoff <= y) {
 		E.cy = y - E.rowoff;
 		E.cx = x;
@@ -1430,7 +1427,7 @@ enterInsertMode(int y)
 	editorStartChange(y, y);
 }
 
-static void 
+static void
 searchFor(void)
 {
 	int y = 0;
@@ -1488,7 +1485,7 @@ searchMode(void)
 
 		size_t length = mbstowcs(NULL, keyword, 0) + 1;
 		wchar_t *wKeyword = malloc(length * sizeof(wchar_t));
-		mbstowcs(wKeyword, keyword, length); 
+		mbstowcs(wKeyword, keyword, length);
 		E.keyword = wKeyword;
 
 		searchFor();
@@ -1519,6 +1516,14 @@ editorAutoIndent(void)
 	}
 	for (; width; width--)
 		editorInsertChar(L' ');
+	return;
+}
+
+static void
+scrollLines(int direction, int count)
+{
+	for (int i = 0; i < count; i++)
+		editorMoveCursor(direction);
 	return;
 }
 
@@ -1642,6 +1647,12 @@ processKeyNormal(int fd, int key)
 	case 'n':
 		exitRawMode('\0');
 		searchFor();
+		break;
+	case CTRL_D:
+		scrollLines(ARROW_DOWN, E.screenrows / 2);
+		break;
+	case CTRL_U:
+		scrollLines(ARROW_UP, E.screenrows / 2);
 		break;
 	case CTRL_Z:
 		exitRawMode('\0');
