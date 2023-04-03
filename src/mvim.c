@@ -1312,6 +1312,8 @@ getConfEntry(const char *name)
 static int
 isNumber(const char *p)
 {
+	if (!*p)
+		return 0;
 	while (*p) {
 		if (!isdigit(*p))
 			return 0;
