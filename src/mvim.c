@@ -1532,7 +1532,7 @@ editorAutoIndent(void)
 	for (wchar_t *p = E.row[E.rowoff + E.cy - 1].chars;
 	     iswspace(*p);
 	     p++) {
-		width += *p == TAB ? 8 : 1;	// FIXME: wider space?
+		width += *p == TAB ? C.tabsize : 1;	// FIXME: wider space?
 	}
 
 	while (width >= C.tabsize) {

@@ -8,7 +8,7 @@ wchar_t *__cKeywords[] = {
 	L"for", L"do", L"while", L"void", L"auto", L"static", L"bool",
 	L"_Bool", L"case", L"break", L"continue", L"extern", L"char",
 	L"wchar_t", L"float", L"double", L"return", L"default", L"goto",
-	L"inline", L"enum", L"const", L"else",
+	L"inline", L"enum", L"const", L"else", L"NULL", L"unsigned",
 	NULL
 };
 
