@@ -823,7 +823,7 @@ editorPaste(wchar_t *s)
 /* Load the specified program in the editor memory and returns 0 on success
  * or 1 on error. */
 int
-editorOpen(char *filename)
+editorOpen(const char *filename)
 {
 	FILE *fp;
 
@@ -1319,6 +1319,29 @@ isNumber(const char *p)
 	return 1;
 }
 
+static void
+expandTab(void)
+{
+	editorStartChange(0, E.numrows);
+	for (int y = 0; y < E.numrows; y++) {
+		erow *row = E.row + y;
+		for (int x = 0; x < row->size; x++) {
+			if (row->chars[x] == TAB) {
+				editorRowDelChar(row, x);
+				for (int i = C.tabsize - x % C.tabsize;
+				     i;
+				     i--) {
+					editorRowInsertChar(row, x, L' ');
+					x++;
+				}
+				x--;
+			}
+		}
+	}
+	editorCommitChange(0, E.numrows);
+	return;
+}
+
 static inline void
 commandMode(void)
 {
@@ -1373,6 +1396,8 @@ freeName:
 		free(name);
 		for (int i = 0; i < E.numrows; i++)
 			editorUpdateRow(E.row + i);
+	} else if (isCmd(cmd, "expandTab")) {
+		expandTab();
 	} else if (isNumber(cmd)) {
 		int line = atoi(cmd);
 		if (line > 0 && line < E.numrows)
@@ -1658,6 +1683,7 @@ processKeyNormal(int fd, int key)
 		exitRawMode('\0');
 		raise(SIGSTOP);
 		enableRawMode();
+		raise(SIGWINCH);
 		break;
 	default:
 		break;
@@ -1890,11 +1916,18 @@ initEditor(void)
 	signal(SIGWINCH, handleSigWinCh);
 }
 
+static void
+usage(const char *prog)
+{
+	fprintf(stderr, "Usage: %s <filename>\n", prog);
+	return;
+}
+
 int
-main(int argc, char **argv)
+main(int argc, const char *argv[])
 {
 	if (argc != 2) {
-		fprintf(stderr, "Usage: %s <filename>\n", argv[0]);
+		usage(argv[0]);
 		return -1;
 	}
 
