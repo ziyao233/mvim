@@ -1047,33 +1047,11 @@ editorRefreshScreen(int write)
 	if (!write)
 		return;
 
-	/* Create a one row status. */
-	char status[80],rstatus[80];
-	int len = snprintf(status, sizeof(status),"%s",
-			   E.mode == MODE_INSERT ? "-- INSERT --" :
-			   E.mode == MODE_VISUAL ? "-- VISUAL --" :"");
-	int rlen = snprintf(rstatus, sizeof(rstatus), "%d,%d    %d%%",
-			    E.rowoff + E.cy + 1, E.cx + 1,
-			    E.numrows ? E.rowoff * 100 / E.numrows : 100);
-	if (len > E.screencols)
-		len = E.screencols;
-
-	fwrite(status, 1, len, stdout);
-	while(len < E.screencols) {
-		if (E.screencols - len == rlen) {
-			writeString(rstatus);
-			break;
-		} else {
-			putchar(' ');
-			len++;
-		}
-	}
-
-    /*
-     * Put cursor at its current position. Note that the horizontal position
-     * at which the cursor is displayed may be different compared to 'E.cx'
-     * because of TABs and wide characters
-     */
+	/*
+	 * Put cursor at its current position. Note that the horizontal
+	 * position at which the cursor is displayed may be different
+	 * compared to 'E.cx' because of TABs and wide characters
+	 */
 	int cx = 0;
 	int filerow = E.rowoff + E.cy;
 	int t = C.tabsize;
@@ -1092,6 +1070,27 @@ editorRefreshScreen(int write)
 		}
 	}
 
+	/* Create a one row status. */
+	char status[80],rstatus[80];
+	int len = snprintf(status, sizeof(status),"%s",
+			   E.mode == MODE_INSERT ? "-- INSERT --" :
+			   E.mode == MODE_VISUAL ? "-- VISUAL --" :"");
+	int rlen = snprintf(rstatus, sizeof(rstatus), "%d,%d-%d    %d%%",
+			    E.rowoff + E.cy + 1, E.cx + 1, cx + 1,
+			    E.numrows ? E.rowoff * 100 / E.numrows : 100);
+	if (len > E.screencols)
+		len = E.screencols;
+
+	fwrite(status, 1, len, stdout);
+	while(len < E.screencols) {
+		if (E.screencols - len == rlen) {
+			writeString(rstatus);
+			break;
+		} else {
+			putchar(' ');
+			len++;
+		}
+	}
 
 	printf("\x1b[%d;%dH", cursorY + 1, cx + 1);
 	writeString("\x1b[?25h");		// Show cursor
@@ -1561,12 +1560,21 @@ processKeyNormal(int fd, int key)
 		key = editorReadKey(fd);
 		if (key == 'd') {
 			editorStartChange(y, y);
+			free(E.copyBuffer);
+			E.copyBuffer = editorCopyRange(0, y, E.row[y].size, y);
 			editorDelRow(y);
 			if (!E.numrows) {
 				editorInsertRow(0, L"", 0);
 			} else if (E.numrows == y) {
 				editorMoveCursor(ARROW_UP);
 			}
+		} else if (key == 'w') {
+			editorStartChange(y, y);
+			int x = E.cx;
+			int isSpace = iswspace(E.row[y].chars[x]);
+			while (iswspace(E.row[y].chars[x]) == isSpace)
+				x++;
+			deleteRange(y, E.cx, x - E.cx);
 		} else if (key == '$') {
 			editorStartChange(y, y);
 			deleteRange(y, E.cx, E.row[y].size - E.cx);

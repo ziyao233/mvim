@@ -14,7 +14,8 @@ wchar_t *__cKeywords[] = {
 
 wchar_t *__luaKeywords[] = {
 	L"function", L"local", L"for", L"in", L"return" ,L"if", L"else",
-	L"elseif", L"do", L"end", L"then", L"break", L"goto",
+	L"elseif", L"do", L"end", L"then", L"break", L"goto", L"while",
+	L"true", L"false", L"and", L"or", L"not",
 	NULL
 };
 
