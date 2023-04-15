@@ -1679,7 +1679,8 @@ processKeyNormal(int fd, int key)
 		break;
 	case 'n':
 		exitRawMode('\0');
-		searchFor();
+		if (E.keyword)
+			searchFor();
 		break;
 	case CTRL_D:
 		scrollLines(ARROW_DOWN, E.screenrows / 2);
