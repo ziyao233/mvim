@@ -1321,7 +1321,7 @@ isNumber(const char *p)
 static void
 expandTab(void)
 {
-	editorStartChange(0, E.numrows);
+	editorStartChange(0, E.numrows - 1);
 	for (int y = 0; y < E.numrows; y++) {
 		erow *row = E.row + y;
 		for (int x = 0; x < row->size; x++) {
@@ -1337,7 +1337,7 @@ expandTab(void)
 			}
 		}
 	}
-	editorCommitChange(0, E.numrows);
+	editorCommitChange(0, E.numrows - 1);
 	return;
 }
 
