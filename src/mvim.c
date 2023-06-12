@@ -1750,17 +1750,21 @@ visualCut(int sx, int sy, int ex, int ey)
 	}
 
 	/*	The first/last line is fully selected, delete it	*/
-	if (ex == li)
-		editorDelRow(ey);
-	else
-		deleteRange(ey, 0, ex + 1);
-
-	if (sx)
+	if (sx) {
 		deleteRange(sy, sx, E.row[sy].size - E.sx);
-	else
+		sy++;
+	} else {
 		editorDelRow(sy);
+		ey--;
+	}
 
-	for (int i = sy + 1; i < ey - 1; i++)
+	if (ex == li) {
+		editorDelRow(ey);
+	} else {
+		deleteRange(ey, 0, ex + 1);
+	}
+
+	for (int i = sy; i < ey; i++)
 		editorDelRow(i);
 }
 
