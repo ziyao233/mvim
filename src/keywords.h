@@ -9,6 +9,7 @@ wchar_t *__cKeywords[] = {
 	L"_Bool", L"case", L"break", L"continue", L"extern", L"char",
 	L"wchar_t", L"float", L"double", L"return", L"default", L"goto",
 	L"inline", L"enum", L"const", L"else", L"NULL", L"unsigned",
+	L"register", L"asm", L"volatile",
 	NULL
 };
 
@@ -49,7 +50,8 @@ wchar_t *__golangKeywords[] = {
 	L"int64", L"uint8", L"uint16", L"uint32", L"uint64", L"string", L"map",
 	L"make", L"len", L"struct", L"type", L"import", L"return", L"package",
 	L"if", L"for", L"else", L"select", L"switch", L"chan", L"bool", L"true",
-	L"false", L"continue", L"break", L"nil", L"case", L"var",
+	L"false", L"continue", L"break", L"nil", L"case", L"var", L"any",
+	L"interface",
 	NULL
 };
 

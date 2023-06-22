@@ -18,6 +18,7 @@ struct Mvim_Conf {
 	int highlightTrailingSpace;
 	int highlightKeywordColor;
 	int autoIndent;
+	int positionStackSize;
 } C = {
 	.tabsize		= 8,
 	.outputBufferSize	= 64 * 1024,
@@ -25,6 +26,7 @@ struct Mvim_Conf {
 	.highlightTrailingSpace	= 1,
 	.highlightKeywordColor	= 2,
 	.autoIndent		= 1,
+	.positionStackSize	= 16,
 };
 
 /*

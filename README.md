@@ -41,6 +41,7 @@ Here is a list of configuration options:
 - `highlightTrailingSpace`: bool, whether to highlight trailing spaces.
 - `highlightKeywordColor`: int, color used to highlight keywords
 (See Color List)
+- `positionStackSize`: int, the size of Position Stack (See Position Stack)
 
 ## Color List
 
@@ -52,6 +53,22 @@ Here is a list of configuration options:
 - `COLOR_MAGENTA`: 5
 - `COLOR_CYAN`: 6
 - `COLOR_WHITE`: 7
+
+## Position Stack
+
+A stack is provided to ease browsing long files. There are two corresponding
+commands for manipulate it.
+
+- `push` (or `pu` for short): Push current position of cursor onto the position
+  stack
+- `pop` (or `po` for short): Move cursor to the position the last element on
+  position stack specifies and pop it from the stack.
+
+## Keyword Highlight
+
+You could specify keywords in `/src/keywords.h`.
+
+Keywords of C, Lua, C++, Golang and Elm have already been included.
 
 ## Contribution
 

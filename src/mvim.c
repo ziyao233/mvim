@@ -131,6 +131,10 @@ static struct editorConfig {
 
 	/*	Keyword Highlight	*/
 	wchar_t **keywords;
+
+	/*	Position Stack		*/
+	int *posStack;
+	int posTop;
 } E;
 
 static struct editorConfig E;
@@ -1341,6 +1345,37 @@ expandTab(void)
 	return;
 }
 
+static int
+isPosStackOverflow(int top)
+{
+	return top < 0 || top > C.positionStackSize;
+}
+
+static inline void
+pushPosition(void)
+{
+	if (isPosStackOverflow(E.posTop + 1)) {
+		normalModeError("Position stack overflow");
+		return;
+	}
+	E.posStack[E.posTop] = E.rowoff + E.cy;
+	E.posTop++;
+	return;
+}
+
+static inline void
+popPosition(void)
+{
+	if (isPosStackOverflow(E.posTop - 1)) {
+		normalModeError("Position stack overflow");
+		return;
+	}
+	E.posTop--;
+	int line = E.posStack[E.posTop];
+	editorMoveCursorTo(line, 0);
+	return;
+}
+
 static inline void
 commandMode(void)
 {
@@ -1397,6 +1432,10 @@ freeName:
 			editorUpdateRow(E.row + i);
 	} else if (isCmd(cmd, "expandTab")) {
 		expandTab();
+	} else if (isCmd(cmd, "push") || isCmd(cmd, "pu")) {
+		pushPosition();
+	} else if (isCmd(cmd, "pop") || isCmd(cmd, "po")) {
+		popPosition();
 	} else if (isNumber(cmd)) {
 		int line = atoi(cmd);
 		if (line > 0 && line < E.numrows)
@@ -1924,6 +1963,9 @@ initEditor(void)
 	E.lastMatchY	= -1;
 
 	E.keywords	= NULL;
+
+	E.posStack	= malloc(sizeof(int) * C.positionStackSize);
+	E.posTop	= 0;
 
 	updateWindowSize();
 	signal(SIGWINCH, handleSigWinCh);
