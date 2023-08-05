@@ -9,7 +9,8 @@ wchar_t *__cKeywords[] = {
 	L"_Bool", L"case", L"break", L"continue", L"extern", L"char",
 	L"wchar_t", L"float", L"double", L"return", L"default", L"goto",
 	L"inline", L"enum", L"const", L"else", L"NULL", L"unsigned",
-	L"register", L"asm", L"volatile",
+	L"register", L"asm", L"volatile", L"u8", L"s8", L"u16", L"s16",
+	L"u32", L"s32", L"u64", L"64", L"switch",
 	NULL
 };
 

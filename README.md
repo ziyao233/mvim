@@ -84,4 +84,8 @@ By BSD-2-Clause License. This project is derived from kilo project. See
 
 ## Sponsor
 
+Help poor children in Uganda!
+
+Consider donating to [ICCF](https://www.iccf.nl).
+
 [Click here to give me a cup of coffee](https://afdian.net/a/ziyao)

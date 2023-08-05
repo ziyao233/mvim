@@ -1444,6 +1444,9 @@ freeName:
 			normalModeError("Out of range.");
 	} else if (!*cmd) {
 		goto end;
+	} else if (isCmd(cmd, "iccf")) {
+		normalModeError("Help poor children in Uganda\r\n"
+				"See https://www.iccf.nl for more information.");
 	} else {
 		normalModeError("Unknown command");
 	}
