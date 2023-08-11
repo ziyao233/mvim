@@ -967,8 +967,8 @@ drawRowAt(int at, int remainSpace, int write)
 			if (write)
 				writeString("\x1b[0K\r\n");
 			line++;
-			if (line > remainSpace)
-				break;
+			if (line >= remainSpace)
+				return 0;
 		}
 
 		if (*(uint8_t*)(row->attr + i) != *(uint8_t*)&lastAttr) {
@@ -1006,7 +1006,7 @@ editorRefreshScreen(int write)
 
 	int printedLine = 0, y = 0, cursorY = 0;
 	E.isScreenFull = true;
-	for (int i = 0;y < E.screenrows;y += printedLine,i++) {
+	for (int i = 0 ;y < E.screenrows; y += printedLine, i++) {
 		int filerow = E.rowoff + i;
 
 		if (filerow >= E.numrows) {
@@ -1033,7 +1033,10 @@ editorRefreshScreen(int write)
 			continue;
 		}
 
-		printedLine = drawRowAt(filerow,E.screenrows - y,write);
+		printedLine = drawRowAt(filerow, E.screenrows - y, write);
+
+		if (!printedLine)
+			break;
 
 		if (i == E.cy)
 			cursorY = y;
