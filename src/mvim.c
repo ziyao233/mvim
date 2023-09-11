@@ -1441,7 +1441,7 @@ freeName:
 		popPosition();
 	} else if (isNumber(cmd)) {
 		int line = atoi(cmd);
-		if (line > 0 && line < E.numrows)
+		if (line > 0 && line <= E.numrows)
 			editorMoveCursorTo(line - 1, 0);
 		else
 			normalModeError("Out of range.");
