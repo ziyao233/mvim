@@ -460,7 +460,7 @@ renderTrailingSpace(erow *row)
 static inline int
 isSeperator(wchar_t *p)
 {
-	return !iswalpha(*p) && *p != '_' && *p != '-';
+	return !iswalnum(*p) && *p != '_' && *p != '-';
 }
 
 static void
