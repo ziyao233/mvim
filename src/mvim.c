@@ -687,6 +687,7 @@ editorRowDelChar(erow *row, int at)
 	memmove(row->chars + at,row->chars + at + 1,sizeof(wchar_t) *
 						    (row->size - at));
 	row->size--;
+	row->asize--;
 	editorUpdateRow(row);
 	return;
 }
@@ -1810,7 +1811,7 @@ visualCut(int sx, int sy, int ex, int ey)
 	}
 
 	for (int i = sy; i < ey; i++)
-		editorDelRow(i);
+		editorDelRow(sy);
 }
 
 static void
