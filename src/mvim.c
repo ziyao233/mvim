@@ -1,6 +1,6 @@
 /* -----------------------------------------------------------------------
  *
- * Copyright (c) 2022-2023 Ziyao.
+ * Copyright (c) 2022-2024 Yao Zi <ziyao at disroot dot com>.
  * Copyright (C) 2016 Salvatore Sanfilippo <antirez at gmail dot com>
  *
  * All rights reserved.
@@ -1297,7 +1297,7 @@ static inline int
 isCmd(const char *s, const char *cmd)
 {
 	size_t len = strlen(cmd);
-	return !strncmp(s, cmd, len) && (isspace(s[len] || s[len]) == '\0') ?
+	return !strncmp(s, cmd, len) && (isspace(s[len]) || !s[len]) ?
 			len : 0;
 }
 
@@ -1381,6 +1381,30 @@ popPosition(void)
 }
 
 static inline void
+commandWriteFile(const char *cmd)
+{
+	const char *p = cmd + 1;
+	while (isspace(*p))
+		p++;
+
+	int ret = 0;
+
+	if (*p) {
+		free(E.filename);
+		E.filename = strdup(p);
+		ret = editorSave();
+	} else {
+		if (E.version)
+			ret = editorSave();
+	}
+
+	if (ret)
+		normalModeError("Cannot save file");
+
+	return;
+}
+
+static inline void
 commandMode(void)
 {
 	exitRawMode(':');
@@ -1405,10 +1429,9 @@ commandMode(void)
 		}
 	} else if (!strcmp(cmd, "q!")) {
 		exit(0);
-	} else if (!strcmp(cmd, "w")) {
-		if (E.version && editorSave()) {
-			normalModeError("Cannot save file");
-		}
+	} else if (isCmd(cmd, "w")) {
+		commandWriteFile(cmd);
+		goto end;
 	} else if (!strcmp(cmd, "wq")) {
 		if (E.version && editorSave()) {
 			normalModeError("Cannot save file");
