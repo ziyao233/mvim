@@ -53,6 +53,7 @@
 #include<sys/types.h>
 #include<sys/ioctl.h>
 #include<sys/time.h>
+#include<sys/wait.h>
 #include<unistd.h>
 #include<fcntl.h>
 #include<signal.h>
@@ -206,6 +207,8 @@ editorAtExit(void)
 	}
 	free(E.history);
 
+	free(E.posStack);
+
 	/*	Reset cursor position	*/
 	printf("\x1b[%d;0H\x1b[0K", E.screenrows + 1);
 	return;
@@ -274,6 +277,19 @@ writeString(const char *s)
 {
 	fputs(s, stdout);
 	return;
+}
+
+wchar_t *
+wcsndup(const wchar_t *s, size_t n)
+{
+	wchar_t *copy = malloc(sizeof(wchar_t) * (n + 1));
+
+	if (copy) {
+		copy[n] = L'\0';
+		wcsncpy(copy, s, n);
+	}
+
+	return copy;
 }
 
 /* Read a key from the terminal put in raw mode, trying to handle
@@ -1425,6 +1441,7 @@ commandMode(void)
 		if (E.version) {
 			normalModeError("No write since last change");
 		} else {
+			free(cmd);
 			exit(0);
 		}
 	} else if (!strcmp(cmd, "q!")) {
@@ -1437,6 +1454,7 @@ commandMode(void)
 			normalModeError("Cannot save file");
 			goto end;
 		}
+		free(cmd);
 		exit(0);
 	} else if ((offset = isCmd(cmd, "set"))) {
 		char *name = malloc(length);
@@ -1620,6 +1638,65 @@ scrollLines(int direction, int count)
 	return;
 }
 
+char *
+getKeywordUnderCursor(void)
+{
+	int start = E.cx + 1, end = E.cx;
+	int cy = E.rowoff + E.cy;
+	const wchar_t *line = E.row[cy].chars;
+
+	while (start > 0 && iswalnum(line[start - 1]))
+		start--;
+
+	while (end <= E.row[cy].size && iswalnum(line[end]))
+		end++;
+
+	if (end < start)
+		return NULL;
+
+	wchar_t *wcs = wcsndup(line + start, end - start);
+	size_t len = wcstombs(NULL, wcs, 0);
+	if (len == (size_t)-1)
+		return NULL;
+
+	char *mbs = malloc(len + 1);
+	wcstombs(mbs, wcs, len + 1);
+
+	free(wcs);
+
+	return mbs;
+}
+
+static inline void
+getManual(void)
+{
+	exitRawMode('\0');
+
+	char *keyword = getKeywordUnderCursor();
+	if (!keyword) {
+		normalModeError("No keyword under cursor");
+		enableRawMode();
+		return;
+	}
+
+	char *manCommand = malloc(4 + strlen(keyword) + 1);
+	strcpy(manCommand, "man ");
+	strcat(manCommand, keyword);
+
+	int pid = fork();
+	if (!pid)
+		execlp("/bin/sh", "sh", "-c", manCommand, NULL);
+	else
+		waitpid(pid, NULL, 0);
+
+	free(manCommand);
+	free(keyword);
+
+	normalModeError("Press any key to continue");
+	enableRawMode();
+	return;
+}
+
 static void
 processKeyNormal(int fd, int key)
 {
@@ -1762,6 +1839,9 @@ processKeyNormal(int fd, int key)
 		raise(SIGSTOP);
 		enableRawMode();
 		raise(SIGWINCH);
+		break;
+	case 'K':
+		getManual();
 		break;
 	default:
 		break;
