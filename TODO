@@ -1,5 +1,8 @@
-Line Number
-Scroll by (half) page
-Autoindent
-Fix that the cursor position is wrong when a line with wide characters is
-	auto-wrapped
+= mVim TODO List
+
+ o Line Number
+ o Fix that the cursor position is wrong when a line with wide characters is
+   auto-wrapped
+ o History Tracing Fixes
+ o Improve user experience of cutting and yanking
+ o Improve performance of pasting large chunk of context into the editor

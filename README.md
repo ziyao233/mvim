@@ -10,6 +10,7 @@ A __MICRO__ copy of Vim
 - Copy, cut and paste
 - History Tracing
 - Keyword highlighting
+- Position Stack
 
 ## Compilation and Installation
 
