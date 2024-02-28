@@ -1645,10 +1645,14 @@ getKeywordUnderCursor(void)
 	int cy = E.rowoff + E.cy;
 	const wchar_t *line = E.row[cy].chars;
 
-	while (start > 0 && iswalnum(line[start - 1]))
+	while (start > 0 && (iswalnum(line[start - 1]) ||
+			     line[start - 1] == L'_'   ||
+			     line[start - 1] == L'-'))
 		start--;
 
-	while (end <= E.row[cy].size && iswalnum(line[end]))
+	while (end <= E.row[cy].size && (iswalnum(line[end]) ||
+					 line[end] == L'_'   ||
+					 line[end] == L'-'))
 		end++;
 
 	if (end < start)
