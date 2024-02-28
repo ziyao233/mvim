@@ -64,6 +64,20 @@ wchar_t *__elmKeywords[] = {
 	NULL
 };
 
+wchar_t *__haskellKeywords[] = {
+	L"module", L"where", L"let", L"in", L"import", L"hiding",
+	L"qualified", L"instance", L"class", L"case", L"of",
+	L"if", L"then", L"else", L"do", L"type", L"data", L"newtype",
+
+	L"Applicative", L"Bool", L"Bounded", L"Char", L"Double", L"Eq",
+	L"Either", L"Enum", L"Float", L"Floating", L"Foldable",
+	L"Fractional", L"Functor", L"IO", L"Int", L"Integer", L"Integral",
+	L"Just", L"Maybe", L"Monad", L"Num", L"Ord", L"Rational",
+	L"Read", L"ReadS", L"Real", L"ReadFloat", L"RealFrac", L"Semigroup",
+	L"Show", L"ShowS", L"String", L"Traversable", L"Word",
+	NULL
+};
+
 /*
  *	K[] must be defined as an array, which contains (char*, wchar**) pairs,
  *	representing the suffix of a type of file and keywords used in the
@@ -80,5 +94,6 @@ Keyword_Class K[] = {
 	{ ".rcs", __rclangKeywords },
 	{ ".go", __golangKeywords },
 	{ ".elm", __elmKeywords },
+	{ ".hs", __haskellKeywords },
 	{ NULL, NULL },
 };
