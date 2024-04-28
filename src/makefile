@@ -1,15 +1,15 @@
 # mVim
 # File: /src/makefile
-# Date: 2023.03.22
+# Date: 2024.04.28
 # By 2-BSD License.
-# Copyright(C) 2022-2023 Ziyao.
+# Copyright(C) 2022-2024 Ziyao.
 
 # Tools
-CC		= c99
-INSTALL		= install
-REMOVE		= rm
-ECHO		= echo
-LD		= c99
+CC		?= c99
+INSTALL		?= install
+REMOVE		?= rm
+ECHO		?= echo
+CCLD		?= $(CC)
 
 # Directories
 DIR_INSTALL	= /usr/local
@@ -19,9 +19,15 @@ DIR_BIN		= $(DIR_INSTALL)/bin
 FILE_OBJS	:= mvim.o
 FILE_OUTPUT	:= mvim
 
+ifeq ($(RELEASE), 1)
+	CFLAGS_DBG	:= -O2
+else
+	CFLAGS_DBG	:= -O0 -g
+endif
+
 # Flags
-FLAG_CC		= -O0 -Wextra -Werror -Wall -g -pedantic
-FLAG_LD		=
+FLAG_CC		?= -Wextra -Werror -Wall -pedantic $(CFLAGS_DBG)
+FLAG_LD		?=
 
 default: build
 
@@ -35,7 +41,7 @@ mvim.o: mvim.c mvim.conf.h keywords.h
 
 build: $(FILE_OBJS)
 	@$(ECHO) [LD] $(FILE_OBJS)
-	@$(LD) $(FILE_OBJS) -o $(FILE_OUTPUT)
+	@$(CCLD) $(FILE_OBJS) -o $(FILE_OUTPUT)
 
 clean:
 	@$(ECHO) [REMOVE] $(FILE_OBJS)
