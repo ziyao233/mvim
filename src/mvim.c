@@ -346,6 +346,26 @@ editorReadKey(int fd) {
     }
 }
 
+static wchar_t
+readWideChar(int startByte)
+{
+	int length = 0;
+	char tmp[16] = {startByte};
+	while (startByte & 0x80) {
+		length++;
+		startByte <<= 1;
+	}
+	if (!length)
+		return startByte;
+
+	// No fread()! The inner buffer's state is unknown
+	read(STDIN_FILENO, tmp + 1, length - 1);
+	wchar_t wideChar = 0;
+	if (mbtowc(&wideChar, tmp, length) < 0)
+		return L' ';
+	return wideChar;
+}
+
 /* Use the ESC [6n escape sequence to query the horizontal cursor position
  * and return it. On error -1 is returned, on success the position of the
  * cursor is stored at *rows and *cols and 0 is returned. */
@@ -1288,6 +1308,52 @@ editorReplaceChar(int y, int x, int new)
 	return;
 }
 
+static char *
+promptGetline(int fd, char prompt)
+{
+	printf("\x1b[%d;%dH\x1b[0K%c", E.screenrows + 1, 0, prompt);
+	fflush(stdout);
+
+	int size = 64, i = 0;
+	char *buf = malloc(sizeof(char) * size);
+	for (char c = editorReadKey(fd); c != ENTER; c = editorReadKey(fd)) {
+		if (c == BACKSPACE) {
+			if (!i)
+				continue;
+			printf("\b \b");
+			fflush(stdout);
+			i--;
+			buf[i] = '\0';
+		} else {
+			putchar(c);
+			fflush(stdout);
+			if (i == (int)size - 1) {
+				size += 64;
+				buf = realloc(buf, sizeof(char) * size);
+			}
+			buf[i] = c;
+			i++;
+		}
+	}
+	buf[i] = '\0';
+
+	editorRefreshScreen(true);
+
+	return buf;
+}
+
+static void
+promptMessage(int fd, const char *msg)
+{
+	printf("\x1b[%d;%dH\x1b[0K%s", E.screenrows + 1, 0, msg);
+	fflush(stdout);
+
+	int key = editorReadKey(fd);
+	readWideChar(key);
+
+	return;
+}
+
 static void
 exitRawMode(char promot)
 {
@@ -1503,26 +1569,6 @@ end:
 	return;
 }
 
-static wchar_t
-readWideChar(int startByte)
-{
-	int length = 0;
-	char tmp[16] = {startByte};
-	while (startByte & 0x80) {
-		length++;
-		startByte <<= 1;
-	}
-	if (!length)
-		return startByte;
-
-	// No fread()! The inner buffer's state is unknown
-	read(STDIN_FILENO, tmp + 1, length - 1);
-	wchar_t wideChar = 0;
-	if (mbtowc(&wideChar, tmp, length) < 0)
-		return L' ';
-	return wideChar;
-}
-
 static inline void
 deleteRange(int y, int x, int length)
 {
@@ -1539,7 +1585,7 @@ enterInsertMode(int y)
 }
 
 static void
-searchFor(void)
+searchFor(int fd)
 {
 	int y = 0;
 	wchar_t *p = NULL;
@@ -1569,26 +1615,19 @@ searchFor(void)
 	}
 
 	if (p) {
-		enableRawMode();
 		y = (E.rowoff + E.cy + y) % E.numrows;
 		editorMoveCursorTo(y, p - E.row[y].chars + wcslen(keyword));
 	} else {
-		normalModeError("Cannot find the keyword.");
-		enableRawMode();
+		promptMessage(fd, "Cannot find the keyword.");
 	}
 
 	return;
 }
 
 static void
-searchMode(void)
+searchMode(int fd)
 {
-	exitRawMode('/');
-
-	char *keyword = NULL;
-	size_t size = 0;
-	ssize_t length = getline(&keyword, &size, stdin);
-	keyword[length - 1] = '\0';
+	char *keyword = promptGetline(fd, '/');
 
 	if (strlen(keyword) && !(strlen(keyword) == 1 && keyword[0] == '^')) {
 		if (E.keyword)
@@ -1599,11 +1638,10 @@ searchMode(void)
 		mbstowcs(wKeyword, keyword, length);
 		E.keyword = wKeyword;
 
-		searchFor();
-	} else {
-		free(keyword);
-		enableRawMode();
+		searchFor(fd);
 	}
+
+	free(keyword);
 
 	return;
 }
@@ -1825,12 +1863,11 @@ processKeyNormal(int fd, int key)
 		editorRedoChange();
 		break;
 	case '/':
-		searchMode();
+		searchMode(fd);
 		break;
 	case 'n':
-		exitRawMode('\0');
 		if (E.keyword)
-			searchFor();
+			searchFor(fd);
 		break;
 	case CTRL_D:
 		scrollLines(ARROW_DOWN, E.screenrows / 2);
