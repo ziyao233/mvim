@@ -1309,14 +1309,16 @@ editorReplaceChar(int y, int x, int new)
 }
 
 static char *
-promptGetline(int fd, char prompt)
+promptGetline(char prompt)
 {
 	printf("\x1b[%d;%dH\x1b[0K%c", E.screenrows + 1, 0, prompt);
 	fflush(stdout);
 
 	int size = 64, i = 0;
 	char *buf = malloc(sizeof(char) * size);
-	for (char c = editorReadKey(fd); c != ENTER; c = editorReadKey(fd)) {
+	for (char c = editorReadKey(STDIN_FILENO);
+	     c != ENTER;
+	     c = editorReadKey(STDIN_FILENO)) {
 		if (c == BACKSPACE) {
 			if (!i)
 				continue;
@@ -1343,12 +1345,12 @@ promptGetline(int fd, char prompt)
 }
 
 static void
-promptMessage(int fd, const char *msg)
+promptMessage(const char *msg)
 {
 	printf("\x1b[%d;%dH\x1b[0K%s", E.screenrows + 1, 0, msg);
 	fflush(stdout);
 
-	int key = editorReadKey(fd);
+	int key = editorReadKey(STDIN_FILENO);
 	readWideChar(key);
 
 	return;
@@ -1362,16 +1364,6 @@ exitRawMode(char promot)
 	// Overwrite the status line
 	printf("\x1b[%d;%dH\x1b[0K%c", E.screenrows + 1, 0, promot);
 	fflush(stdout);			// stdout is block-buffered
-	return;
-}
-
-static void
-normalModeError(const char *s)
-{
-	enableRawMode();
-	writeString(s);
-	fflush(stdout);
-	editorReadKey(STDOUT_FILENO);
 	return;
 }
 
@@ -1441,7 +1433,7 @@ static inline void
 pushPosition(void)
 {
 	if (isPosStackOverflow(E.posTop + 1)) {
-		normalModeError("Position stack overflow");
+		promptMessage("Position stack overflow");
 		return;
 	}
 	E.posStack[E.posTop] = E.rowoff + E.cy;
@@ -1453,7 +1445,7 @@ static inline void
 popPosition(void)
 {
 	if (isPosStackOverflow(E.posTop - 1)) {
-		normalModeError("Position stack overflow");
+		promptMessage("Position stack overflow");
 		return;
 	}
 	E.posTop--;
@@ -1481,7 +1473,7 @@ commandWriteFile(const char *cmd)
 	}
 
 	if (ret)
-		normalModeError("Cannot save file");
+		promptMessage("Cannot save file");
 
 	return;
 }
@@ -1489,23 +1481,18 @@ commandWriteFile(const char *cmd)
 static inline void
 commandMode(void)
 {
-	exitRawMode(':');
-
-	char *cmd = NULL;
-	size_t size = 0;
-	ssize_t length = getline(&cmd, &size, stdin);
+	char *cmd = promptGetline(':');
 	/*
 	 *	cmd will get leaked if exit() is called when "q", "wq" or "q!"
 	 *	is used and the editor exits. It doesn't matter.
 	 */
-	if (length < 0)
+	if (!*cmd)
 		goto end;
-	cmd[length - 1] = '\0';
 
 	int offset = 0;
 	if (!strcmp(cmd, "q")) {
 		if (E.version) {
-			normalModeError("No write since last change");
+			promptMessage("No write since last change");
 		} else {
 			free(cmd);
 			exit(0);
@@ -1517,22 +1504,22 @@ commandMode(void)
 		goto end;
 	} else if (!strcmp(cmd, "wq")) {
 		if (E.version && editorSave()) {
-			normalModeError("Cannot save file");
+			promptMessage("Cannot save file");
 			goto end;
 		}
 		free(cmd);
 		exit(0);
 	} else if ((offset = isCmd(cmd, "set"))) {
-		char *name = malloc(length);
+		char *name = malloc(strlen(cmd) + 1);
 		int value = 0;
 		if (sscanf(cmd + offset,"%s %d",name,&value) != 2) {
-			normalModeError("Wrong usage: set key value");
+			promptMessage("Wrong usage: set key value");
 			goto freeName;
 		}
 
 		Mvim_Conf_Entry *entry = getConfEntry(name);
 		if (!entry) {
-			normalModeError("Invalid key.");
+			promptMessage("Invalid key.");
 			goto freeName;
 		}
 
@@ -1552,20 +1539,18 @@ freeName:
 		if (line > 0 && line <= E.numrows)
 			editorMoveCursorTo(line - 1, 0);
 		else
-			normalModeError("Out of range.");
+			promptMessage("Out of range.");
 	} else if (!*cmd) {
 		goto end;
 	} else if (isCmd(cmd, "iccf")) {
-		normalModeError("Help poor children in Uganda\r\n"
-				"See https://www.iccf.nl for more information.");
+		promptMessage("Help poor children in Uganda\r\n"
+			      "See https://www.iccf.nl for more information.");
 	} else {
-		normalModeError("Unknown command");
+		promptMessage("Unknown command");
 	}
 
 end:
 	free(cmd);
-
-	enableRawMode();
 	return;
 }
 
@@ -1585,7 +1570,7 @@ enterInsertMode(int y)
 }
 
 static void
-searchFor(int fd)
+searchFor(void)
 {
 	int y = 0;
 	wchar_t *p = NULL;
@@ -1618,16 +1603,16 @@ searchFor(int fd)
 		y = (E.rowoff + E.cy + y) % E.numrows;
 		editorMoveCursorTo(y, p - E.row[y].chars + wcslen(keyword));
 	} else {
-		promptMessage(fd, "Cannot find the keyword.");
+		promptMessage("Cannot find the keyword.");
 	}
 
 	return;
 }
 
 static void
-searchMode(int fd)
+searchMode(void)
 {
-	char *keyword = promptGetline(fd, '/');
+	char *keyword = promptGetline('/');
 
 	if (strlen(keyword) && !(strlen(keyword) == 1 && keyword[0] == '^')) {
 		if (E.keyword)
@@ -1638,7 +1623,7 @@ searchMode(int fd)
 		mbstowcs(wKeyword, keyword, length);
 		E.keyword = wKeyword;
 
-		searchFor(fd);
+		searchFor();
 	}
 
 	free(keyword);
@@ -1716,7 +1701,7 @@ getManual(void)
 
 	char *keyword = getKeywordUnderCursor();
 	if (!keyword) {
-		normalModeError("No keyword under cursor");
+		promptMessage("No keyword under cursor");
 		enableRawMode();
 		return;
 	}
@@ -1734,7 +1719,7 @@ getManual(void)
 	free(manCommand);
 	free(keyword);
 
-	normalModeError("Press any key to continue");
+	promptMessage("Press any key to continue");
 	enableRawMode();
 	return;
 }
@@ -1863,11 +1848,11 @@ processKeyNormal(int fd, int key)
 		editorRedoChange();
 		break;
 	case '/':
-		searchMode(fd);
+		searchMode();
 		break;
 	case 'n':
 		if (E.keyword)
-			searchFor(fd);
+			searchFor();
 		break;
 	case CTRL_D:
 		scrollLines(ARROW_DOWN, E.screenrows / 2);
