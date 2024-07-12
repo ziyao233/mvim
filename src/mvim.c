@@ -211,6 +211,8 @@ editorAtExit(void)
 
 	/*	Reset cursor position	*/
 	printf("\x1b[%d;0H\x1b[0K", E.screenrows + 1);
+	printf("\x1b[?25h");
+	fflush(stdout);
 	return;
 }
 
