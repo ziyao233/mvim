@@ -1326,7 +1326,7 @@ promptGetline(char prompt)
 			fflush(stdout);
 			i--;
 			buf[i] = '\0';
-		} else {
+		} else if (isprint(c)){
 			putchar(c);
 			fflush(stdout);
 			if (i == (int)size - 1) {
