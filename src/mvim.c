@@ -1405,10 +1405,18 @@ isNumber(const char *p)
 static void
 expandTab(void)
 {
-	editorStartChange(0, E.numrows - 1);
-	for (int y = 0; y < E.numrows; y++) {
+	int sy = 0, ey = E.numrows;
+	int sx = 0, ex = E.row[ey - 1].size;
+	if (E.mode == MODE_VISUAL) {
+		getSelectedRange(&sx, &sy, &ex, &ey);
+		ey++;
+	}
+
+	editorStartChange(sy, ey);
+	for (int y = sy; y < ey; y++) {
 		erow *row = E.row + y;
-		for (int x = 0; x < row->size; x++) {
+		for (int x = y == sy ? sx : 0;
+		     x < (y == ey - 1 ? ex : row->size); x++) {
 			if (row->chars[x] == TAB) {
 				editorRowDelChar(row, x);
 				for (int i = C.tabsize - x % C.tabsize;
@@ -1421,7 +1429,7 @@ expandTab(void)
 			}
 		}
 	}
-	editorCommitChange(0, E.numrows - 1);
+	editorCommitChange(sy, ey);
 	return;
 }
 
