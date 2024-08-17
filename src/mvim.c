@@ -2026,6 +2026,9 @@ processKeyVisual(int fd, int key)
 		editorMoveCursorTo(sy, sx);
 		visualCut(sx, sy, ex, ey);
 		break;
+	case ':':
+		commandMode();
+		break;
 	default:
 		break;
 	}
