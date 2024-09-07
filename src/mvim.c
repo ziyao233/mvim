@@ -2034,6 +2034,14 @@ processKeyVisual(int fd, int key)
 		editorMoveCursorTo(sy, sx);
 		visualCut(sx, sy, ex, ey);
 		break;
+	case CTRL_D:
+		scrollLines(ARROW_DOWN, E.screenrows / 2);
+		editorUpdateRange(y, E.rowoff + E.cy);
+		break;
+	case CTRL_U:
+		scrollLines(ARROW_UP, E.screenrows / 2);
+		editorUpdateRange(E.rowoff + E.cy, y);
+		break;
 	case ':':
 		commandMode();
 		break;
