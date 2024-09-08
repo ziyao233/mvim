@@ -1,6 +1,6 @@
 /* -----------------------------------------------------------------------
  *
- * Copyright (c) 2022-2024 Yao Zi <ziyao at disroot dot com>.
+ * Copyright (c) 2022-2024 Yao Zi <ziyao at disroot dot org>.
  * Copyright (C) 2016 Salvatore Sanfilippo <antirez at gmail dot com>
  *
  * All rights reserved.
