@@ -1467,6 +1467,10 @@ unexpandTab(void)
 	}
 
 	editorCommitChange(sy, ey);
+
+	erow *row = E.row + E.cy + E.rowoff;
+	E.cx = E.cx >= row->size ? row->size - 1 : E.cx;
+
 	return;
 }
 
