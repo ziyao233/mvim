@@ -1433,6 +1433,43 @@ expandTab(void)
 	return;
 }
 
+static void
+unexpandTab(void)
+{
+	int sy = 0, ey = E.numrows;
+	int sx = 0, ex = E.row[ey - 1].size;
+	if (E.mode == MODE_VISUAL) {
+		getSelectedRange(&sx, &sy, &ex, &ey);
+		ey++;
+	}
+
+	editorStartChange(sy, ey);
+	for (int y = sy; y < ey; y++) {
+		erow *row = E.row + y;
+		int fx = y == sy ? sx : 0, spaces = 0;
+		int lx = y == sy ? sx : 0;
+		for (; lx < (y == ey - 1 ? ex : row->size); lx++) {
+			if (row->chars[lx] == TAB)
+				spaces += C.tabsize - lx % C.tabsize;
+			else if (row->chars[lx] == ' ')
+				spaces++;
+			else
+				break;
+		}
+
+		for (int x = fx; x < lx; x++)
+			editorRowDelChar(row, fx);
+
+		for (int n = 0; n < spaces % C.tabsize; n++)
+			editorRowInsertChar(row, fx, L' ');
+		for (int n = 0; n < spaces / C.tabsize; n++)
+			editorRowInsertChar(row, fx, L'\t');
+	}
+
+	editorCommitChange(sy, ey);
+	return;
+}
+
 static int
 isPosStackOverflow(int top)
 {
@@ -1540,6 +1577,8 @@ freeName:
 			editorUpdateRow(E.row + i);
 	} else if (isCmd(cmd, "expandTab")) {
 		expandTab();
+	} else if (isCmd(cmd, "unexpandTab")) {
+		unexpandTab();
 	} else if (isCmd(cmd, "push") || isCmd(cmd, "pu")) {
 		pushPosition();
 	} else if (isCmd(cmd, "pop") || isCmd(cmd, "po")) {
@@ -2044,6 +2083,8 @@ processKeyVisual(int fd, int key)
 		break;
 	case ':':
 		commandMode();
+		exitVisualMode(sy <= E.numrows ? sy : E.numrows - 1,
+			       ey <= E.numrows ? ey : E.numrows - 1);
 		break;
 	default:
 		break;
