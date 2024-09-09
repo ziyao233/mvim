@@ -940,6 +940,19 @@ writeerr:
 	return 1;
 }
 
+int
+rowWidth(erow *row, int end)
+{
+	int w = 0;
+	for (int i = 0; i < end; i++) {
+		int t = wcwidth(row->chars[i]);
+		w += t >= 0			? t			    :
+		     row->chars[i] == TAB	? C.tabsize - w % C.tabsize :
+						  1;
+	};
+	return w;
+}
+
 /*
  *	|<---------------------------------->_
  *		editorWidthFrom()	    Cursor
@@ -1437,7 +1450,8 @@ static void
 unexpandTab(void)
 {
 	int sy = 0, ey = E.numrows;
-	int sx = 0, ex = E.row[ey - 1].size;
+	int sx, ex;
+
 	if (E.mode == MODE_VISUAL) {
 		getSelectedRange(&sx, &sy, &ex, &ey);
 		ey++;
@@ -1446,24 +1460,21 @@ unexpandTab(void)
 	editorStartChange(sy, ey);
 	for (int y = sy; y < ey; y++) {
 		erow *row = E.row + y;
-		int fx = y == sy ? sx : 0, spaces = 0;
-		int lx = y == sy ? sx : 0;
-		for (; lx < (y == ey - 1 ? ex : row->size); lx++) {
-			if (row->chars[lx] == TAB)
-				spaces += C.tabsize - lx % C.tabsize;
-			else if (row->chars[lx] == ' ')
-				spaces++;
-			else
-				break;
-		}
+		int lx = 0;	// position of last space character
 
-		for (int x = fx; x < lx; x++)
-			editorRowDelChar(row, fx);
+		for (; lx < row->size; lx++)
+			if (row->chars[lx] != L'\t' && row->chars[lx] != L' ')
+				break;
+
+		int spaces = rowWidth(row, lx);
+
+		for (int x = 0; x < lx; x++)
+			editorRowDelChar(row, 0);
 
 		for (int n = 0; n < spaces % C.tabsize; n++)
-			editorRowInsertChar(row, fx, L' ');
+			editorRowInsertChar(row, 0, L' ');
 		for (int n = 0; n < spaces / C.tabsize; n++)
-			editorRowInsertChar(row, fx, L'\t');
+			editorRowInsertChar(row, 0, L'\t');
 	}
 
 	editorCommitChange(sy, ey);
