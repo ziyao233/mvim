@@ -91,6 +91,8 @@ Keyword_Class K[] = {
 	{ ".sh", __shellKeywords },
 	{ ".cpp", __cppKeywords },
 	{ ".hpp", __cppKeywords },
+	{ ".cc", __cppKeywords },
+	{ ".cxx", __cppKeywords },
 	{ ".rcs", __rclangKeywords },
 	{ ".go", __golangKeywords },
 	{ ".elm", __elmKeywords },
