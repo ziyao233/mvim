@@ -78,6 +78,18 @@ wchar_t *__haskellKeywords[] = {
 	NULL
 };
 
+wchar_t *__m4Keywords[] = {
+	L"dnl", L"define", L"defn", L"indir", L"pushdef", L"popdef",
+	L"builtin", L"ifdef", L"ifelse", L"shift", L"include", L"dumpdef",
+	L"traceon", L"traceoff", L"debugmode", L"debugfile", L"changequote",
+	L"changecom", L"m4wrap", L"sinclude", L"divert", L"undivert",
+	L"divnum", L"len", L"index", L"regexp", L"substr", L"translit",
+	L"patsubst", L"format", L"incr", L"decr", L"eval", L"syscmd",
+	L"esyscmd", L"sysval", L"mkstemp", L"maketemp", L"errprint",
+	L"m4exit",
+	NULL
+};
+
 /*
  *	K[] must be defined as an array, which contains (char*, wchar**) pairs,
  *	representing the suffix of a type of file and keywords used in the
@@ -89,6 +101,7 @@ Keyword_Class K[] = {
 	{ ".h", __cKeywords },
 	{ ".lua", __luaKeywords },
 	{ ".sh", __shellKeywords },
+	{ ".cc", __cppKeywords },
 	{ ".cpp", __cppKeywords },
 	{ ".hpp", __cppKeywords },
 	{ ".cc", __cppKeywords },
@@ -97,5 +110,7 @@ Keyword_Class K[] = {
 	{ ".go", __golangKeywords },
 	{ ".elm", __elmKeywords },
 	{ ".hs", __haskellKeywords },
+	{ ".m4", __m4Keywords },
+	{ ".ac", __m4Keywords },
 	{ NULL, NULL },
 };
