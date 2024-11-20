@@ -83,7 +83,6 @@ typedef struct {
 
 /* This structure represents a single line of the file we are editing. */
 typedef struct {
-	int idx;		// Row index in the file, zero-based.
 	int size;		// Size of the row, excluding the null term.
 	wchar_t *chars;		// Row content.
 	int asize;		// Size of attr
@@ -572,12 +571,9 @@ editorInsertRow(int at, const wchar_t *s, size_t len)
 	if (at > E.numrows)
 	    return;
 	E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
-	if (at != E.numrows) {
+	if (at != E.numrows)
 		memmove(E.row + at + 1, E.row + at,
 			sizeof(E.row[0]) * (E.numrows - at));
-		for (int j = at + 1; j <= E.numrows; j++)
-			E.row[j].idx++;
-	}
 
 	E.row[at].size	= len;
 	E.row[at].attr	= NULL;
@@ -585,7 +581,6 @@ editorInsertRow(int at, const wchar_t *s, size_t len)
 	E.row[at].chars	= malloc(sizeof(wchar_t) * (len + 1));
 	wcsncpy(E.row[at].chars, s, len);
 	E.row[at].chars[len]	= L'\0';
-	E.row[at].idx		= at;
 	editorUpdateRow(E.row + at);
 	E.numrows++;
 }
@@ -642,8 +637,6 @@ editorDelRow(int at)
 	memmove(E.row + at, E.row + at + 1,
 		sizeof(E.row[0]) * (E.numrows - at - 1));
 
-	for (int j = at; j < E.numrows - 1; j++)
-		E.row[j].idx++;
 	E.numrows--;
 	return;
 }
