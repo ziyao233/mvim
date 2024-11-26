@@ -1882,6 +1882,9 @@ processKeyNormal(int fd, int key)
 			editorStartChange(y, y);
 			editorRowDelChar(E.row + y, E.cx);
 			editorCommitChange(y, y);
+
+			if (E.cx == E.row[y].size)
+				E.cx--;
 		}
 		break;
 	case 'r':
