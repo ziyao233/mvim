@@ -958,7 +958,7 @@ editorWidthFrom(int start)
 	for (int i = start;i - start < E.cx;i++) {
 		int t = wcwidth(row->chars[i]);
 		width += t >= 0			? t			    :
-			 row->chars[i] == TAB	? C.tabsize - C.tabsize % 8 :
+			 row->chars[i] == TAB	? C.tabsize - width % 8	    :
 						  1;
 	}
 	return width;
@@ -1267,7 +1267,7 @@ editorMoveCursor(int key)
 	 *	as wide characters (CJK) cannot be splitted)
 	 */
 	row = E.row + E.cy + E.rowoff;
-	int cx = 0,width = 0;
+	int cx = 0, width = 0;
 	while (cx < row->size && width <= leftWidth) {
 		int t = wcwidth(row->chars[cx]);
 		width += t >= 0		       ? t			       :
