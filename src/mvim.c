@@ -1816,6 +1816,9 @@ processKeyNormal(int fd, int key)
 			break;
 		}
 
+		if (E.cx >= E.row[y].size && E.cx)
+			E.cx = E.row[y].size - 1;
+
 		editorCommitChange(y, key == 'd' ? y - 1 : y);
 		break;
 	case '$':
