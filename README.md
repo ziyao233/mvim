@@ -16,22 +16,22 @@ A __MICRO__ copy of Vim
 
 Make sure you have `c99` on your system, which should refer to a
 C99-compatible compiler. This project uses POSIX features and VT100 control
-sequences to draw the screen, so check that your terminal supports it.
+sequences to draw the screen, so please check that your terminal supports it.
 
 ```shell
 $ cd src && make install
 ```
 
-Default installation path is specified in `/src/makefile` as `DIR_INSTALL`,
-which could be modified at command line, e.g.:
+The installation path is specified through variable `DIR_INSTALL`, which
+could be alternated on commandline, e.g.,
 
 ```shell
-$ make install DIR_INSTALL=$(HOME)/.local/bin
+$ make install DIR_INSTALL="$HOME/.local/bin"
 ```
 
 ## Configuration
 
-Default configuration is specified at compile time, and some of them could be
+Default configuration is specified at compile time. Some options could be
 modified at runtime with `:set` command.
 
 Here is a list of configuration options:
@@ -41,8 +41,9 @@ Here is a list of configuration options:
 - `historySize` (Compile time only): int, how many changes could be traced.
 - `highlightTrailingSpace`: bool, whether to highlight trailing spaces.
 - `highlightKeywordColor`: int, color used to highlight keywords
-(See Color List)
-- `positionStackSize`: int, the size of Position Stack (See Position Stack)
+  (See Color List)
+- `positionStackSize` (Compile time only): int, the size of Position Stack (See
+  Position Stack)
 
 ## Color List
 
@@ -57,36 +58,47 @@ Here is a list of configuration options:
 
 ## Position Stack
 
-A stack is provided to ease browsing long files. There are two corresponding
-commands for manipulate it.
+A stack is provided to ease browsing long files. Two commands are provided for
+for manipulate it,
 
 - `push` (or `pu` for short): Push current position of cursor onto the position
   stack
-- `pop` (or `po` for short): Move cursor to the position the last element on
-  position stack specifies and pop it from the stack.
+- `pop` (or `po` for short): Pop a position from the stack and move cursor to
+  it
 
 ## Keyword Highlight
 
-You could specify keywords in `/src/keywords.h`.
+Keywords to be highlighted are listed in `src/keywords.h` and divided into
+groups. mVim selects a group at startup by matching the file extension.
 
-Keywords of C, Lua, C++, Golang and Elm have already been included.
+mVim already ships keywords for following languages,
+
+- C/C++
+- Lua
+- POSIX Shell
+- Golang
+- Elm
+- Haskell
+- M4 Macro Language
+
+They were added since I'm using them in my daily basis.
 
 ## Contribution
 
-This project is tailored for my own usage, but I have make some efforts to make
-it adapt to wider requirements. Pull requests and patches will not be accepted.
+This project is tailored for my own usage, but I have make some efforts to
+adapt it to wider requirements. Pull requests and patches will not be accepted.
 If you want a feature to be added, make sure it isn't in the unsupported list
-(``/UNSUPPORTED_LIST``), then give me an issue.
+(`UNSUPPORTED_LIST`), then give me an issue.
 
 ## LICENSE
 
-By BSD-2-Clause License. This project is derived from kilo project. See
-`/src/mvim.c` for details. The original license is `/LICENSE_KILO`.
+This project is distributed under BSD-2-Clause License.
+
+This project is derived from kilo project, see `src/mvim.c` for details.
+`LICENSE_KILO` contains the original copyright.
 
 ## Sponsor
 
 Help poor children in Uganda!
 
 Consider donating to [ICCF](https://www.iccf.nl).
-
-[Click here to give me a cup of coffee](https://afdian.net/a/ziyao)
